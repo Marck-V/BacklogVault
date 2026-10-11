@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  ts-report:
+    name: TS report typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts-report
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ts-report/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  export-service:
+    name: C# export service build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: export-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build --configuration Release
+
+  docker-stack:
+    name: Docker stack smoke test
+    runs-on: ubuntu-latest
+    env:
+      IGDB_CLIENT_ID: ci-placeholder
+      IGDB_CLIENT_SECRET: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all images
+        run: docker compose build
+      - name: Start the stack and wait until it is healthy
+        run: docker compose up -d --wait --wait-timeout 120
+      - name: Smoke test through the nginx entrypoint
+        run: |
+          set -e
+          U=http://localhost:8080
+          J='Content-Type: application/json'
+          curl -fsS $U/ | grep -q '<div id="root">'
+          curl -fsS $U/lists/1 | grep -q '<div id="root">'
+          curl -fsS $U/api/health
+          curl -fsS $U/export/health
+
+          # A visitor with no session sees nothing and cannot export
+          test "$(curl -fsS $U/api/lists)" = '[]'
+          test "$(curl -s -o /dev/null -w '%{http_code}' $U/export/csv)" = '401'
+
+          # User A: first write creates a guest session; written by Node, read by the C# container
+          LIST_ID=$(curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST $U/api/lists -H "$J" -d '{"name":"CI"}' | jq .id)
+          curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST "$U/api/lists/$LIST_ID/games" -H "$J" -d '{"igdb_id":1,"name":"CI Game"}'
+          curl -fsS -b /tmp/a.jar $U/export/csv | grep -q 'CI Game,Backlog,CI,'
+
+          # User B is isolated from user A in both the Node API and the C# export
+          curl -fsS -c /tmp/b.jar -b /tmp/b.jar -X POST $U/api/lists -H "$J" -d '{"name":"Other"}'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/b.jar $U/api/lists/$LIST_ID)" = '404'
+          if curl -fsS -b /tmp/b.jar $U/export/csv | grep -q 'CI Game'; then
+            echo "LEAK: user B can see user A's data in the CSV export"
+            exit 1
+          fi
+
+          # Guest upgrades to an account in place and keeps the library
+          curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST $U/api/auth/register -H "$J" -d '{"email":"ci@example.com","password":"ci-password-123"}'
+          curl -fsS -b /tmp/a.jar $U/export/csv | grep -q 'CI Game,Backlog,CI,'
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

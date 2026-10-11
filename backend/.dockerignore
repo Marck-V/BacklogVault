@@ -1,0 +1,10 @@
+node_modules
+test
+coverage
+vitest.config.js
+.env
+*.db
+*.db-shm
+*.db-wal
+Dockerfile
+.dockerignore
