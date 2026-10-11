@@ -64,6 +64,16 @@ Counts include comments. They are a rough size indicator, not a quality measure.
 
 Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not averages: re-run a few times before quoting a precise figure.
 
+### CI on GitHub (first run, 2026-10-11, private repo `Marck-V/BacklogVault`, commit `cf51aea`)
+| Metric | Value | How to reproduce |
+|---|---|---|
+| Result | **All 5 jobs passed on the first run**; the Docker smoke test passed on GitHub's runner too | `gh run list`, or the repo's Actions tab |
+| Wall-clock for the whole pipeline | about **88 s** (jobs run in parallel; first start 21:06:45, last finish 21:08:13) | `gh run view <id> --json jobs` |
+| Per job | Backend tests 16 s, Frontend lint and build 10 s, TS typecheck 13 s, C# build 22 s, Docker stack **87 s** | same |
+| Docker job steps | Build all images 65 s (no layer cache on a fresh runner), start and healthy 7 s, smoke test under 1 s, tear down 11 s | `gh run view <id> --json jobs --jq '.jobs[].steps'` |
+| Test run as CI saw it | 7 files passed, 3.98 s | the "Run npm test" step log |
+| Runs measured | **1**. Treat these as one sample, not an average | see section 3 |
+
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
 |---|---|---|
@@ -82,7 +92,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 ### Architecture facts
 - **16** REST routes in the Node API (4 of them auth routes), **2** in the C# service.
 - **3 languages:** JavaScript (API and UI), C# (export service), TypeScript (report CLI).
-- **5 CI jobs** are defined for every push: backend tests, frontend lint and build, TS typecheck, C# build, Docker stack smoke test. **None has run on GitHub yet** (see section 3). The checks themselves were run locally.
+- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build, Docker stack smoke test. All 5 passed on their first GitHub run (see the CI table above).
 - Verified locally: lint has 0 errors and 2 warnings; `tsc --noEmit` is clean; `dotnet build` has 0 errors.
 
 ---
@@ -116,6 +126,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 9. Found while reviewing my own CI script: `! curl ... | grep -q ...` under `set -e` can never fail the step (negated commands are exempt from exit-on-error), so the "user B cannot see user A's data" check was vacuous. **Fixed** with an explicit `if ...; then exit 1; fi` and then run against the real stack.
 10. Design risk caught before shipping: the C# export service reads the whole database, so once users existed it would have exported **everyone's** data. It now validates the session cookie and filters by user, and is covered by a live two-user check and the CI smoke test.
 11. Latent bug, not fixed: the dashboard's time-to-beat query uses `limit 500`, so with more than 500 distinct active games the totals would undercount silently.
+12. GitHub's first CI run passed but raised annotations (not failures): (a) `actions/checkout@v4`, `setup-node@v4` and `setup-dotnet@v4` target the deprecated Node 20 and are being forced onto Node 24, and newer majors exist (checkout v7, setup-node v7, setup-dotnet v6 as of 2026-10-11); (b) the `ubuntu-latest` label starts moving to Ubuntu 26 on **2026-10-19**, which could change the runner image under the workflow. **Not fixed yet.** Options: bump the action versions, and pin `ubuntu-24.04` if you want predictable runners.
 
 ---
 
@@ -125,7 +136,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 |---|---|---|
 | A truly cold Docker build | The 37 s first build had some base layers pulled by an earlier failed attempt | `docker system prune -a` (this deletes all unused images), then `time docker compose build` |
 | Repeatable Docker numbers | Sizes and times above are single measurements | Run the build and start commands 3 times and take the median before quoting exact figures |
-| CI passing and CI duration | The repo is not initialised and nothing has been pushed | GitHub Actions tab after the first push. Record the per-job and total time |
+| Typical CI duration | Only one run so far | After several pushes, take the median of `gh run list --json startedAt,updatedAt`. The Docker build (65 s) could likely be shortened with a build cache, which would be a measurable improvement to record |
+| CI still passing after the action upgrades | The workflow has not been changed since the first run | See bug 12 below, then re-run and confirm |
 | Deployment, uptime, response time | Not deployed | After deploying: the hosting dashboard and `curl -w "%{time_total}"` |
 | Password reset and email verification | Not built (needs outbound email). A forgotten password currently means a lost account, and emails are not verified | Build before a public launch; then record the flow and tests |
 | HTTPS in production | Local and Docker runs use plain HTTP, so the cookie `Secure` flag is off (`COOKIE_SECURE=false`) | Deploy behind HTTPS, set `COOKIE_SECURE=true` and re-test sign-in |
@@ -150,6 +162,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 - Cleared 4 dependency vulnerabilities (1 critical) with `npm audit fix` and confirmed no regressions with the test suite.
 - Designed and built guest-first authentication: visitors use the app with no sign-up, a guest session is created lazily on the first write, and "Create account" upgrades it in place so the library carries over. Passwords use scrypt with per-user salts, session tokens are random and stored only as SHA-256 hashes in an HttpOnly SameSite cookie, and logins are rate limited.
 - Added per-user data isolation across a Node API and a separate C# service (every query scoped by owner, other users' data returns 404/401), verified with 48 automated auth tests plus a live two-user check and a CI smoke test.
+- Set up GitHub Actions CI with 5 parallel jobs (backend tests, frontend lint and build, TypeScript typecheck, C# build, and a Docker Compose smoke test that boots the full stack and verifies user data isolation). The whole pipeline passed on its first run in about 88 seconds.
 - Caught and fixed two bugs in my own work during review (a request that created guest accounts before validating, and a CI check that could never fail).
 
 **Only after you have run it and have the number:**
