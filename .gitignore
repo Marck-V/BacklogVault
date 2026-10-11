@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+coverage/
+
+# SQLite databases (local data)
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# .NET
+export-service/bin/
+export-service/obj/
+
+# Logs, OS and editor files
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Local Claude Code settings
+.claude/settings.local.json
+.vitest/
+*.bak*

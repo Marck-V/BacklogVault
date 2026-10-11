@@ -1,0 +1,37 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see .env.example)}
+      IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
+      # nginx is one proxy hop in front of the API, so rate limiting must read the forwarded client IP
+      TRUST_PROXY: "1"
+      # Browsers only keep Secure cookies over HTTPS (plus localhost); set to "true" once the site is served over HTTPS
+      COOKIE_SECURE: "false"
+    volumes:
+      - backlog-data:/data
+    restart: unless-stopped
+
+  export:
+    build: ./export-service
+    # Match the node user's uid in the api image so both containers can use the SQLite -wal/-shm files in the shared volume
+    user: "1000:1000"
+    volumes:
+      - backlog-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+      - export
+    restart: unless-stopped
+
+volumes:
+  backlog-data:
