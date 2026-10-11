@@ -23,6 +23,12 @@ function App() {
       <div className="app">
         <SiteHeader />
         <AppRoutes />
+        <footer className="site-footer">
+          Game data and cover art provided by{' '}
+          <a href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">
+            IGDB.com
+          </a>
+        </footer>
       </div>
     </AuthProvider>
   )

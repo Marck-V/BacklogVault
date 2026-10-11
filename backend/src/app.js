@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { igdbRequest } from "./igdbClient.js";
 import { escapeIgdbString } from "./igdbQuery.js";
+import { createIgdbLimiter } from "./igdbLimiter.js";
 import { attachUser } from "./auth.js";
 import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
@@ -23,6 +24,10 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 app.use(attachUser);
+
+// One shared budget per IP across every route that calls IGDB.
+const igdbLimiter = createIgdbLimiter();
+app.use("/api/games", igdbLimiter);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
@@ -76,7 +81,7 @@ app.get("/api/games/:id/details", async (req, res) => {
   }
 });
 
-app.get("/api/stats/time-to-beat", async (req, res) => {
+app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
   try {
     // 0 matches no user (ids start at 1), so visitors without a session get the empty totals.
     const userId = req.user?.id ?? 0;
@@ -107,10 +112,23 @@ app.get("/api/stats/time-to-beat", async (req, res) => {
       });
     }
 
-    const timesToBeat = await igdbRequest(
-      "game_time_to_beats",
-      `fields game_id,normally,completely; where game_id = (${uniqueIds.join(",")}); limit 500;`
-    );
+    let timesToBeat;
+    try {
+      timesToBeat = await igdbRequest(
+        "game_time_to_beats",
+        `fields game_id,normally,completely; where game_id = (${uniqueIds.join(",")}); limit 500;`
+      );
+    } catch (err) {
+      // IGDB is only needed for the hour totals, so the counts from our own database still go out.
+      console.error(err);
+      return res.json({
+        game_count: uniqueIds.length,
+        completed_count,
+        total_main_story_seconds: null,
+        total_completionist_seconds: null,
+        igdb_unavailable: true,
+      });
+    }
 
     const totals = timesToBeat.reduce(
       (acc, t) => {
@@ -124,7 +142,7 @@ app.get("/api/stats/time-to-beat", async (req, res) => {
     res.json({ game_count: uniqueIds.length, completed_count, ...totals });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch time-to-beat stats from IGDB" });
+    res.status(500).json({ error: "Failed to load dashboard stats" });
   }
 });
 

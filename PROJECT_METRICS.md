@@ -9,34 +9,61 @@ Purpose: a factual record of what was built, what was measured, and how it works
 
 ---
 
+## Improvement log (before and after)
+
+One row per improvement, newest last. Every row needs a **before**, an **after**, and the **evidence** (a command you can re-run). Add a row each time something is improved, and record the "before" number *before* making the change.
+
+| Date | Improvement | Before | After | Evidence |
+|---|---|---|---|---|
+| 2026-10-08 | Automated tests | 0 tests | 58 tests at 95.6% line coverage (grew to 106 tests at 94.8% when accounts were added on 10-11) | `cd backend && npm run test:coverage` |
+| 2026-10-08 | Test coverage of the IGDB client (Twitch token caching) | 21% of lines | 100% (fully covered files are hidden from the coverage table) | coverage report, 6 tests in `igdbClient.test.js` |
+| 2026-10-08 | Search query injection | user text was interpolated straight into the IGDB query; repeated `?q=` was stringified | input escaped; blank or repeated `q` returns 400; 5 regression tests | `backend/test/games.test.js`, `igdbQuery.test.js` |
+| 2026-10-08 | Dependency vulnerabilities | 4 (1 critical) | 0 | `cd backend && npm audit` |
+| 2026-10-08 | Running the app | 3 processes started by hand on 3 host ports (4000, 5000, 5173) | one command (`docker compose up`), 3 images, **1** published port (8080) | `docker compose ps` |
+| 2026-10-08 | Docker image size (multi-stage builds) | 1.68 GB API, 1.54 GB C#, 1.8 GB web (the builder stage, i.e. what a single-stage build would ship) | 355 MB, 392 MB, 94 MB (**79%, 75%, 95% smaller**) | `docker images` |
+| 2026-10-11 | Data isolation between users | any visitor could read, change, delete and export everyone's data | per-user ownership on every query; other users get 404/401; the C# export is scoped too | 48 auth tests, live two-user check, CI smoke test |
+| 2026-10-11 | Invalid requests creating accounts | each invalid `POST /api/lists` created a guest user row | 0 rows created | 4 tests in `auth.test.js` |
+| 2026-10-11 | Login brute-force protection | unlimited attempts | 10 per 15 minutes per IP, then 429 | 13 live requests through nginx, plus a unit test |
+| 2026-10-11 | Verification on every push | manual, local only | 5 automated CI jobs, about 88 s, all green on the first run | `gh run list` |
+| 2026-10-11 | CI isolation check | a negated command (`! curl ... \| grep`) that could never fail under `set -e` | an explicit `if ...; then exit 1; fi`, run against the real stack | `.github/workflows/ci.yml` |
+| 2026-10-11 | CI deprecation warnings | Node 20 deprecation and `ubuntu-latest` migration notices on the jobs | none (2 older frontend lint warnings remain); run time about 86 s | `gh run view <id>` |
+| 2026-10-11 | Public IGDB search: burst from one client | 100 rapid requests, **all 100 accepted**, **100 calls to IGDB in 139 ms** (about 720 per second against a reported limit of 4 per second) | **60 accepted, 40 rejected with 429** (60 per minute per IP); **60 calls to IGDB**, spaced at least 289 ms apart, **at most 4 in any 1-second window** | before/after measured with the same 100-request burst; `igdbLimiter.test.js`, `igdbThrottle.test.js` |
+| 2026-10-11 | IGDB outbound limit and retries | no cap on concurrent or per-second calls, and no handling of 429 | one queue for the whole site: 300 ms apart, at most 8 open; 429 retried up to 2 times honoring `Retry-After` (capped at 5 s) | 7 tests in `igdbThrottle.test.js` |
+| 2026-10-11 | Dashboard when IGDB is down | **500 with no data**; counts from our own database (such as games completed) were lost too | **200 with the counts intact**, hour totals shown as "—" with a note | before: measured with IGDB mocked to fail; after: tests and the browser |
+| 2026-10-11 | IGDB attribution | none | "Game data and cover art provided by IGDB.com" in the footer | `frontend/src/App.jsx` |
+
+**Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
+
+---
+
 ## 1. Measured (re-run to confirm)
 
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **106 passing, 0 failing** across 7 files | `cd backend && npm test` |
+| Automated tests | **123 passing, 0 failing** across 9 files | `cd backend && npm test` |
 | Tests before this work | **0** | (none existed) |
-| Line coverage | **94.8%** (255/269) | `cd backend && npm run test:coverage` |
-| Statement coverage | 94.5% | same |
-| Branch coverage | 89.3% | same |
-| Function coverage | 93.0% | same |
-| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) | earlier measurements |
-| Suite runtime | about 2-4 s (password-hashing tests are the slowest; 0.5 s before accounts existed) | "Duration" line in `npm test` output |
+| Line coverage | **95.2%** (295/310) | `cd backend && npm run test:coverage` |
+| Statement coverage | 94.9% | same |
+| Branch coverage | 89.8% | same |
+| Function coverage | 96.2% | same |
+| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) | earlier measurements |
+| Suite runtime | about 2.2 s (0.5 s before accounts existed; password hashing is the slowest part) | "Duration" line in `npm test` output |
 | External network calls during tests | **0** (IGDB and Twitch are mocked or stubbed) | tests pass offline |
 | `npm audit` | **0 vulnerabilities** | `cd backend && npm audit` |
 
-Tests per file: `auth.test.js` 38, `lists.test.js` 32, `games.test.js` 11, `authUnit.test.js` 10, `igdbClient.test.js` 6, `stats.test.js` 5, `igdbQuery.test.js` 4.
+Tests per file: `auth.test.js` 38, `lists.test.js` 32, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `igdbClient.test.js` 6, `stats.test.js` 6, `igdbQuery.test.js` 4.
 
 Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the new code has a few defensive branches (a race on duplicate email, the migration branch for old databases) that tests do not trigger. Say that if asked; do not hide it.
 
 ### Size of the codebase (non-blank lines, excludes dependencies, build output, lockfiles)
 | Area | Lines |
 |---|---|
-| Backend source (Node/Express, JavaScript) | 578 |
+| Backend source (Node/Express, JavaScript) | 660 |
 | Backend scripts | 13 |
-| Backend tests | 761 (about 1.3 lines of test per line of source) |
-| Frontend JS/JSX (React) | 950 |
-| Frontend CSS | 876 |
+| Backend tests | 966 (about 1.5 lines of test per line of source) |
+| Frontend JS/JSX (React) | 960 |
+| Frontend CSS | 894 |
 | C# export service | 71 |
 | TypeScript report CLI | 99 |
 | Docker + compose + nginx config | 107 |
@@ -72,7 +99,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Per job | Backend tests 16 s, Frontend lint and build 10 s, TS typecheck 13 s, C# build 22 s, Docker stack **87 s** | same |
 | Docker job steps | Build all images 65 s (no layer cache on a fresh runner), start and healthy 7 s, smoke test under 1 s, tear down 11 s | `gh run view <id> --json jobs --jq '.jobs[].steps'` |
 | Test run as CI saw it | 7 files passed, 3.98 s | the "Run npm test" step log |
-| Runs measured | **1**. Treat these as one sample, not an average | see section 3 |
+| Second run (after bumping actions and pinning `ubuntu-24.04`, commit `b265060`) | All 5 passed again; about **86 s** wall-clock; Docker 86 s, C# build 21 s, backend tests 18 s, TS typecheck 16 s, frontend 12 s. Node 20 and `ubuntu-latest` warnings no longer appear | `gh run list` |
+| Runs measured | **2**. Durations are close (88 s then 86 s) but two samples are still not an average | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -126,7 +154,11 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 9. Found while reviewing my own CI script: `! curl ... | grep -q ...` under `set -e` can never fail the step (negated commands are exempt from exit-on-error), so the "user B cannot see user A's data" check was vacuous. **Fixed** with an explicit `if ...; then exit 1; fi` and then run against the real stack.
 10. Design risk caught before shipping: the C# export service reads the whole database, so once users existed it would have exported **everyone's** data. It now validates the session cookie and filters by user, and is covered by a live two-user check and the CI smoke test.
 11. Latent bug, not fixed: the dashboard's time-to-beat query uses `limit 500`, so with more than 500 distinct active games the totals would undercount silently.
-12. GitHub's first CI run passed but raised annotations (not failures): (a) `actions/checkout@v4`, `setup-node@v4` and `setup-dotnet@v4` target the deprecated Node 20 and are being forced onto Node 24, and newer majors exist (checkout v7, setup-node v7, setup-dotnet v6 as of 2026-10-11); (b) the `ubuntu-latest` label starts moving to Ubuntu 26 on **2026-10-19**, which could change the runner image under the workflow. **Not fixed yet.** Options: bump the action versions, and pin `ubuntu-24.04` if you want predictable runners.
+12. GitHub's first CI run passed but raised annotations (not failures): (a) `actions/checkout@v4`, `setup-node@v4` and `setup-dotnet@v4` target the deprecated Node 20 and are being forced onto Node 24, and newer majors exist (checkout v7, setup-node v7, setup-dotnet v6 as of 2026-10-11); (b) the `ubuntu-latest` label starts moving to Ubuntu 26 on **2026-10-19**, which could change the runner image under the workflow. **Fixed (2026-10-11, commit `b265060`):** actions bumped to checkout v7, setup-node v7, setup-dotnet v6, and jobs pinned to `ubuntu-24.04`. The next run passed all 5 jobs and the deprecation warnings disappeared. The only annotations left are the 2 frontend lint warnings.
+13. **Fixed (2026-10-11):** the IGDB search and details routes were public and unthrottled. Now a per-IP limit (60 per minute, shared across IGDB-backed routes) rejects bursts with 429, and a site-wide queue keeps calls to IGDB under its reported limit, with 429 retry and backoff. Before: 100 rapid requests caused 100 calls to IGDB in 139 ms. After: 60 accepted, 40 rejected, at most 4 calls in any 1-second window. The 60-per-minute figure is my estimate, not tuned from real traffic. Not done: a session requirement on search (it would not stop a bot, which can create a guest session), and a per-user limit.
+14. **Fixed (2026-10-11):** the dashboard stats route used to return a 500 with no data if IGDB failed. It now returns the counts from our own database and marks the hour totals unavailable; the page shows “—” with a note. Verified with tests and in the browser with deliberately invalid IGDB credentials.
+15. **Partly addressed (2026-10-11):** an IGDB attribution now appears in the footer. Still open: I could not read IGDB's official terms, so whether the site counts as non-commercial, and what the rules are on caching or storing IGDB data, are unconfirmed. Confirm at api-docs.igdb.com before launch and before building the planned IGDB cache.
+16. **My own slip, logged for honesty (2026-10-11):** while checking that `app.js` still loaded, I ran a command that imported it, and importing opens the real `backend/backlog.db`, so the account migration was applied to your real database earlier than planned. It is the same additive migration the server runs on first start. I checked afterwards: all 4 game rows are identical to the pre-migration backup, there are 0 users and 0 sessions, and your one list is still unowned. Lesson: set `DB_PATH` to a throwaway database for any ad-hoc script that touches the app.
 
 ---
 
@@ -137,7 +169,6 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | A truly cold Docker build | The 37 s first build had some base layers pulled by an earlier failed attempt | `docker system prune -a` (this deletes all unused images), then `time docker compose build` |
 | Repeatable Docker numbers | Sizes and times above are single measurements | Run the build and start commands 3 times and take the median before quoting exact figures |
 | Typical CI duration | Only one run so far | After several pushes, take the median of `gh run list --json startedAt,updatedAt`. The Docker build (65 s) could likely be shortened with a build cache, which would be a measurable improvement to record |
-| CI still passing after the action upgrades | The workflow has not been changed since the first run | See bug 12 below, then re-run and confirm |
 | Deployment, uptime, response time | Not deployed | After deploying: the hosting dashboard and `curl -w "%{time_total}"` |
 | Password reset and email verification | Not built (needs outbound email). A forgotten password currently means a lost account, and emails are not verified | Build before a public launch; then record the flow and tests |
 | HTTPS in production | Local and Docker runs use plain HTTP, so the cookie `Secure` flag is off (`COOKIE_SECURE=false`) | Deploy behind HTTPS, set `COOKIE_SECURE=true` and re-test sign-in |
@@ -146,6 +177,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Your existing local library | Pre-accounts lists have no owner, so they are invisible until claimed. Backed up at `backend/backlog.pre-auth.bak` | Create your account, then run `cd backend && npm run claim-legacy -- you@example.com` |
 | CSRF protection | Relies on `SameSite=Lax` cookies, a strict CORS origin allowlist and JSON-only bodies; no CSRF tokens | Get a security review before relying on this publicly |
 | Frontend automated tests | The account UI was verified by driving a browser by hand, not by automated UI tests | Add component or end-to-end tests |
+| IGDB limits and tuning | The 4 requests per second and 8 open requests limits come from secondary summaries, not IGDB's own page. The 60 requests per minute per IP and 300 ms spacing are my estimates, not tuned from real traffic | Confirm IGDB's limits in its docs, then review the numbers against real usage after launch (watch for 429s in the logs) |
+| IGDB terms confirmed in writing | I could only read secondary summaries, not api-docs.igdb.com. Commercial-use, caching and attribution rules are unverified | Read the official docs, and email or ask IGDB support for confirmation if the site might ever carry ads or payments |
 | Mutation check on the tests | I tried to break the escaping and date logic on purpose to confirm the tests fail. The tooling blocked that run, I reverted the edits, and never completed it | Manual: remove `escapeIgdbString(...)` in `app.js`, run `npm test`, expect failures, then put it back |
 
 ---
@@ -258,3 +291,22 @@ other device       POST /api/auth/login       -> optionally merges that device's
 - *Why hash the session token if it is random?* Defence in depth: a database leak should not hand out live sessions.
 - *What happens to a guest who clears cookies?* They lose access to that library; it is purged after 90 days. That is exactly why the UI offers "Create account" and warns guests before signing out.
 - *How would this scale?* Move SQLite to Postgres (users and sessions tables move as is), keep sessions in the database or Redis, and use a shared rate-limit store.
+
+### 5.7 Protecting a shared third-party API (the IGDB hardening)
+
+**The problem:** the whole site shares one IGDB Client ID, so IGDB's limit (reported as about 4 requests per second and 8 open at once) is shared by every visitor. A public search route with no limits lets one visitor, or a bot, use up that budget for everyone, and could get the credentials suspended.
+
+**Two layers, because they solve different problems**
+- **Per-client limit (the door):** `express-rate-limit` allows 60 requests per minute per IP across every route that spends IGDB quota, and answers 429 with `Retry-After`. It protects fairness: no single client can take the whole budget. Behind nginx it needs `TRUST_PROXY=1`, otherwise every visitor looks like the proxy's IP.
+- **Site-wide queue (the pipe):** every outbound IGDB call goes through one queue that spaces call starts 300 ms apart and keeps at most 8 open. Even if 1,000 different visitors each stay under their own limit, the total going to IGDB stays under IGDB's. It protects the shared resource.
+
+**Why 300 ms and not exactly 250 ms:** 4 per second is a 250 ms gap, but my first measurement showed 5 calls inside one 1-second window because of timing jitter (the request is recorded a few milliseconds after the slot is granted). Measuring before trusting the design caught it. 300 ms gives margin.
+
+**429 handling:** if IGDB still says "slow down", the client waits for the `Retry-After` header (or 1 s, then 2 s) and retries up to 2 times, with the wait capped at 5 s so a user's request never hangs for minutes.
+
+**Graceful degradation:** the dashboard needs IGDB only for the hour totals. If IGDB fails, the route still returns the counts that come from our own database and flags the totals as unavailable, instead of failing the whole page. The general rule: separate what depends on a third party from what does not, and let the second part survive.
+
+**Likely questions**
+- *Why not just cache IGDB results?* It would cut calls a lot, and it is on the roadmap, but IGDB's rules on caching and storing data are unconfirmed, so the rules come first.
+- *Why not require login for search?* A bot can create a guest session for free, so it would not stop abuse. Rate limiting does.
+- *Is 60 per minute the right number?* It is an estimate. Tune it from real traffic, and watch for 429s.
