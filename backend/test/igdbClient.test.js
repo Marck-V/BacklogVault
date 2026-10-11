@@ -93,8 +93,8 @@ describe("igdbRequest", () => {
     fetchMock.mockImplementation(async (url) =>
       String(url).includes("id.twitch.tv")
         ? jsonResponse({ access_token: "t", expires_in: 3600 })
-        : new Response("rate limited", { status: 429 })
+        : new Response("upstream error", { status: 500 })
     );
-    await expect(igdbRequest("games", "q")).rejects.toThrow(/IGDB request failed: 429/);
+    await expect(igdbRequest("games", "q")).rejects.toThrow(/IGDB request failed: 500/);
   });
 });

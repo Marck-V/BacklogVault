@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getTimeToBeatStats, getCurrentlyPlaying } from './api'
 
 function formatHours(seconds) {
+  if (seconds == null) return '—'
   if (!seconds) return '0 hours'
   return `${Math.round(seconds / 3600).toLocaleString()} hours`
 }
@@ -46,6 +47,10 @@ export default function Dashboard() {
           <span className="stat-label">Games completed</span>
         </div>
       </div>
+
+      {stats.igdb_unavailable && (
+        <p className="dashboard-note">Time estimates are temporarily unavailable. Everything else is up to date.</p>
+      )}
 
       {playing.length > 0 && (
         <div className="currently-playing-widget">

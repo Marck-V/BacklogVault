@@ -93,13 +93,32 @@ describe("GET /api/stats/time-to-beat", () => {
     expect(res.body.total_completionist_seconds).toBe(0);
   });
 
-  it("returns 500 when IGDB fails", async () => {
+  it("still returns the counts from our own database when IGDB fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const list = await createList(client);
     await addGame(client, list.id, { igdb_id: 1 });
+    const done = await addGame(client, list.id, { igdb_id: 2 });
+    await setStatus(list.id, done, "Completed");
     vi.mocked(igdbRequest).mockRejectedValue(new Error("boom"));
 
     const res = await client.get("/api/stats/time-to-beat");
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      game_count: 1,
+      completed_count: 1,
+      total_main_story_seconds: null,
+      total_completionist_seconds: null,
+      igdb_unavailable: true,
+    });
+  });
+
+  it("does not flag a normal response as unavailable", async () => {
+    const list = await createList(client);
+    await addGame(client, list.id, { igdb_id: 1 });
+    vi.mocked(igdbRequest).mockResolvedValue([{ game_id: 1, normally: 3600, completely: 7200 }]);
+
+    const res = await client.get("/api/stats/time-to-beat");
+    expect(res.body).not.toHaveProperty("igdb_unavailable");
+    expect(res.body.total_main_story_seconds).toBe(3600);
   });
 });
