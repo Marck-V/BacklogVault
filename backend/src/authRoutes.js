@@ -104,6 +104,7 @@ router.post("/login", limiter, asyncHandler(async (req, res) => {
   db.transaction(() => {
     if (guest && merge) {
       mergedLists = db.prepare("UPDATE lists SET user_id = ? WHERE user_id = ?").run(user.id, guest.id).changes;
+      db.prepare("UPDATE OR IGNORE time_estimate_includes SET user_id = ? WHERE user_id = ?").run(user.id, guest.id);
       db.prepare("DELETE FROM users WHERE id = ?").run(guest.id);
     } else if (req.sessionToken) {
       destroySession(req.sessionToken);

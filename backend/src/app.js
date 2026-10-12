@@ -89,6 +89,12 @@ app.get("/api/games/:id/details", async (req, res) => {
   }
 });
 
+// IGDB's time-to-beat numbers are crowd-sourced, and endless or multiplayer games (VRChat, Bloons TD 6)
+// get submissions of tens or hundreds of thousands of hours. One of those would swamp the whole total,
+// so a game over either limit is left out of the sums and reported as a count instead.
+const MAX_MAIN_STORY_HOURS = 200;
+const MAX_COMPLETIONIST_HOURS = 500;
+
 app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
   try {
     // 0 matches no user (ids start at 1), so visitors without a session get the empty totals.
@@ -111,12 +117,28 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
       )
       .get(userId);
 
+    // Hours you logged, once per game even if it sits in several lists (the biggest entry wins).
+    // This comes from our own database, so it still works when IGDB is down.
+    const { total_hours_played } = db
+      .prepare(
+        `SELECT COALESCE(SUM(h), 0) AS total_hours_played FROM (
+           SELECT MAX(lg.hours_played) AS h
+           FROM list_games lg JOIN lists l ON l.id = lg.list_id
+           WHERE l.user_id = ?
+           GROUP BY lg.igdb_id
+         )`
+      )
+      .get(userId);
+
     if (uniqueIds.length === 0) {
       return res.json({
         game_count: 0,
         total_main_story_seconds: 0,
         total_completionist_seconds: 0,
         completed_count,
+        total_hours_played,
+        games_left_out: 0,
+        games_without_estimate: 0,
       });
     }
 
@@ -132,26 +154,87 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
       return res.json({
         game_count: uniqueIds.length,
         completed_count,
+        total_hours_played,
         total_main_story_seconds: null,
         total_completionist_seconds: null,
         igdb_unavailable: true,
       });
     }
 
-    const totals = timesToBeat.reduce(
-      (acc, t) => {
-        acc.total_main_story_seconds += t.normally ?? 0;
-        acc.total_completionist_seconds += t.completely ?? 0;
-        return acc;
-      },
-      { total_main_story_seconds: 0, total_completionist_seconds: 0 }
+    const totals = { total_main_story_seconds: 0, total_completionist_seconds: 0 };
+    const included = new Set(
+      db.prepare("SELECT igdb_id FROM time_estimate_includes WHERE user_id = ?").all(userId).map((r) => r.igdb_id)
     );
+    const names = new Map(
+      db
+        .prepare(
+          `SELECT lg.igdb_id, MIN(lg.name) AS name
+           FROM list_games lg JOIN lists l ON l.id = lg.list_id
+           WHERE l.user_id = ? GROUP BY lg.igdb_id`
+        )
+        .all(userId)
+        .map((r) => [r.igdb_id, r.name])
+    );
+    let withEstimate = 0;
+    let gamesLeftOut = 0;
+    const overLimit = [];
+    for (const t of timesToBeat) {
+      if (!t.normally && !t.completely) continue;
+      withEstimate += 1;
+      if ((t.normally ?? 0) > MAX_MAIN_STORY_HOURS * 3600 || (t.completely ?? 0) > MAX_COMPLETIONIST_HOURS * 3600) {
+        const isIncluded = included.has(t.game_id);
+        overLimit.push({
+          igdb_id: t.game_id,
+          name: names.get(t.game_id) ?? "Unknown game",
+          main_story_seconds: t.normally ?? 0,
+          completionist_seconds: t.completely ?? 0,
+          included: isIncluded,
+        });
+        if (!isIncluded) {
+          gamesLeftOut += 1;
+          continue;
+        }
+      }
+      totals.total_main_story_seconds += t.normally ?? 0;
+      totals.total_completionist_seconds += t.completely ?? 0;
+    }
 
-    res.json({ game_count: uniqueIds.length, completed_count, ...totals });
+    res.json({
+      game_count: uniqueIds.length,
+      completed_count,
+      total_hours_played,
+      ...totals,
+      games_left_out: gamesLeftOut,
+      over_limit_games: overLimit.sort((a, b) => b.main_story_seconds - a.main_story_seconds),
+      games_without_estimate: uniqueIds.length - withEstimate,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load dashboard stats" });
   }
+});
+
+// Lets the user count (or stop counting) one over-the-limit game in the time-remaining totals.
+app.put("/api/stats/time-to-beat/includes/:igdbId", (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Not signed in" });
+  const igdbId = Number(req.params.igdbId);
+  if (!Number.isInteger(igdbId) || igdbId < 1 || typeof req.body?.included !== "boolean") {
+    return res.status(400).json({ error: "Send { included: true | false } for a valid game id" });
+  }
+  const owned = db
+    .prepare(
+      `SELECT 1 FROM list_games lg JOIN lists l ON l.id = lg.list_id
+       WHERE l.user_id = ? AND lg.igdb_id = ? LIMIT 1`
+    )
+    .get(req.user.id, igdbId);
+  if (!owned) return res.status(404).json({ error: "Game not found in your lists" });
+
+  if (req.body.included) {
+    db.prepare("INSERT OR IGNORE INTO time_estimate_includes (user_id, igdb_id) VALUES (?, ?)").run(req.user.id, igdbId);
+  } else {
+    db.prepare("DELETE FROM time_estimate_includes WHERE user_id = ? AND igdb_id = ?").run(req.user.id, igdbId);
+  }
+  res.json({ igdb_id: igdbId, included: req.body.included });
 });
 
 app.get("/api/stats/currently-playing", (req, res) => {

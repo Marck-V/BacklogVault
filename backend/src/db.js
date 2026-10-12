@@ -41,6 +41,13 @@ db.exec(`
     added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(list_id, igdb_id)
   );
+
+  -- Games whose IGDB time is over the dashboard limits but that the user chose to count anyway.
+  CREATE TABLE IF NOT EXISTS time_estimate_includes (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    igdb_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, igdb_id)
+  );
 `);
 
 const listGamesColumns = db.prepare("PRAGMA table_info(list_games)").all().map((c) => c.name);
