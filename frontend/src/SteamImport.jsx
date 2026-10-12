@@ -92,17 +92,24 @@ export default function SteamImport({ listId, onImported }) {
       <form onSubmit={handleSubmit}>
         <input
           type="text"
+          name="steam"
+          autoComplete="off"
+          spellCheck={false}
           aria-label="Steam profile"
           value={steam}
           onChange={(e) => setSteam(e.target.value)}
-          placeholder="steamcommunity.com/id/yourname"
+          placeholder="steamcommunity.com/id/yourname…"
           maxLength={200}
         />
         <button type="submit" disabled={busy || !steam.trim()}>
-          {busy ? 'Importing...' : 'Import'}
+          {busy ? 'Importing…' : 'Import'}
         </button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       {result && <Summary result={result} />}
     </section>
   )

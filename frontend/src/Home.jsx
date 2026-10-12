@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getLists, createList, deleteList, EXPORT_BASE } from './api'
 import Dashboard from './Dashboard'
+import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './auth'
 import { usePageTitle } from './usePageTitle'
 
@@ -23,6 +24,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [newName, setNewName] = useState('')
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   useEffect(() => {
     refresh()
@@ -53,8 +55,14 @@ export default function Home() {
     }
   }
 
-  async function handleDelete(id) {
-    await deleteList(id)
+  async function handleConfirmDelete() {
+    const { id } = pendingDelete
+    setPendingDelete(null)
+    try {
+      await deleteList(id)
+    } catch (err) {
+      setError(err.message)
+    }
     refresh()
   }
 
@@ -69,6 +77,8 @@ export default function Home() {
 
   return (
     <div>
+      <h1 className="visually-hidden">BacklogVault</h1>
+
       {user?.isGuest && lists.length > 0 && !bannerDismissed && (
         <div className="guest-banner" role="note">
           <span>
@@ -104,16 +114,19 @@ export default function Home() {
         <form onSubmit={handleCreate} className="new-list-form">
           <input
             type="text"
+            aria-label="New list name"
+            name="listName"
+            autoComplete="off"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="New list name..."
+            placeholder="e.g. Weekend Backlog…"
             maxLength={100}
           />
           <button type="submit">Create List</button>
         </form>
 
         {error && <p className="error">{error}</p>}
-        {loading && <p>Loading...</p>}
+        {loading && <p role="status">Loading…</p>}
 
         {!loading && lists.length === 0 && <p>No lists yet. Create one to get started.</p>}
 
@@ -121,13 +134,23 @@ export default function Home() {
           {lists.map((list) => (
             <li key={list.id}>
               <Link to={`/lists/${list.id}`}>{list.name}</Link>
-              <button type="button" onClick={() => handleDelete(list.id)}>
+              <button type="button" onClick={() => setPendingDelete(list)} aria-label={`Delete ${list.name}`}>
                 Delete
               </button>
             </li>
           ))}
         </ul>
       </section>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          message={`Delete “${pendingDelete.name}” and every game in it? This can’t be undone.`}
+          confirmLabel="Delete List"
+          cancelLabel="Cancel"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   )
 }

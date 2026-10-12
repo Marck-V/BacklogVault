@@ -178,7 +178,7 @@ describe('importing', () => {
     type('gaben')
     submit()
 
-    const busyButton = await screen.findByRole('button', { name: 'Importing...' })
+    const busyButton = await screen.findByRole('button', { name: 'Importing…' })
     expect(busyButton.disabled).toBe(true)
     fireEvent.click(busyButton)
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)

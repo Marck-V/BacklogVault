@@ -24,7 +24,7 @@ describe("guest sessions", () => {
     const playing = await client.get("/api/stats/currently-playing");
     expect(me.body).toEqual({ user: null });
     expect(lists.body).toEqual([]);
-    expect(playing.body).toEqual({ source: "manual", games: [] });
+    expect(playing.body).toEqual({ source: "manual", steam_linked: false, steam_failed: false, games: [] });
     expect(sessionCookie(me)).toBeUndefined();
     expect(userCount()).toBe(0);
   });

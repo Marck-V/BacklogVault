@@ -240,12 +240,40 @@ app.put("/api/stats/time-to-beat/includes/:igdbId", (req, res) => {
 
 app.get("/api/stats/currently-playing", async (req, res) => {
   // Visitors without a session have no games and no Steam link.
-  if (!req.user) return res.json({ source: "manual", games: [] });
+  if (!req.user) return res.json({ source: "manual", steam_linked: false, steam_failed: false, games: [] });
   try {
     res.json(await currentlyPlaying(req.user.id));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load currently playing games" });
+  }
+});
+
+// The dashboard's refresh button: re-reads small, quickly changing things from Steam. For now that is the
+// recently played list; anything similar added later goes in the same response. A short cooldown per user keeps
+// the button from being used to hammer Steam and IGDB.
+const REFRESH_COOLDOWN_MS = 30 * 1000;
+const lastRefresh = new Map();
+
+app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Not signed in" });
+  try {
+    const waitMs = REFRESH_COOLDOWN_MS - (Date.now() - (lastRefresh.get(req.user.id) ?? 0));
+    if (waitMs > 0) {
+      res.set("Retry-After", String(Math.ceil(waitMs / 1000)));
+      return res.status(429).json({ error: "Refreshed a moment ago. Try again in a few seconds." });
+    }
+    const currently_playing = await currentlyPlaying(req.user.id, { force: true });
+    if (!currently_playing.steam_linked) {
+      return res.status(409).json({ error: "Import your Steam library first so we know which account to refresh." });
+    }
+    // Only a real attempt starts the cooldown; a request that was turned away above does not.
+    if (lastRefresh.size >= 5000) lastRefresh.delete(lastRefresh.keys().next().value);
+    lastRefresh.set(req.user.id, Date.now());
+    res.json({ currently_playing });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to refresh from Steam" });
   }
 });
 

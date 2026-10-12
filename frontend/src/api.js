@@ -75,6 +75,10 @@ export function getGenreBreakdown() {
   return request('/api/stats/genres')
 }
 
+export function refreshFromSteam() {
+  return request('/api/steam/refresh', { method: 'POST' })
+}
+
 export function getCurrentlyPlaying() {
   return request('/api/stats/currently-playing')
 }
