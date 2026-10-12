@@ -18,6 +18,8 @@ coverage/
 # .NET
 export-service/bin/
 export-service/obj/
+export-service.tests/bin/
+export-service.tests/obj/
 
 # Logs, OS and editor files
 *.log

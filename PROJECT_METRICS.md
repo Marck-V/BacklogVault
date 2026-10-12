@@ -31,6 +31,11 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 | 2026-10-11 | IGDB outbound limit and retries | no cap on concurrent or per-second calls, and no handling of 429 | one queue for the whole site: 300 ms apart, at most 8 open; 429 retried up to 2 times honoring `Retry-After` (capped at 5 s) | 7 tests in `igdbThrottle.test.js` |
 | 2026-10-11 | Dashboard when IGDB is down | **500 with no data**; counts from our own database (such as games completed) were lost too | **200 with the counts intact**, hour totals shown as "—" with a note | before: measured with IGDB mocked to fail; after: tests and the browser |
 | 2026-10-11 | IGDB attribution | none | "Game data and cover art provided by IGDB.com" in the footer | `frontend/src/App.jsx` |
+| 2026-10-11 | Export service coupling | 2 services read the same SQLite file; the export container mounted the data volume; **14 lines** of session-checking code were duplicated in C#; 1 NuGet package; the pair could only run on one machine with one disk | only the API touches the database; the export container has **0 mounts**; **0** duplicated lines; **0** NuGet packages; the service runs on any host | `docker inspect gamebacklogtracker-export-1`, `export-service/Program.cs` |
+| 2026-10-11 | CSV export correctness | **3 of 3** awkward names mangled or unsafe: a comma silently replaced with a space, a name with a line break split into two records, a `=SUM(...)` value written raw (spreadsheet formula injection); quotes unescaped | **0 of 3**: values are quoted per RFC 4180, a standard CSV parser reads back exactly 3 records, and formula-like values get a leading apostrophe (visible in the cell, a deliberate trade-off) | the same 3 names sent through the full stack before and after; `CsvExportTests.cs` |
+| 2026-10-11 | C# test coverage | 0 C# tests, and CI did not run any | 19 C# tests (quoting, formula neutralisation, record building), run in CI | `dotnet test export-service.tests` |
+| 2026-10-11 | Export image size | 392 MB | 340 MB (**13% smaller**) because the SQLite native library is gone | `docker images` |
+| 2026-10-11 | Export when the API is down | not applicable (it read the file directly) | a new dependency, handled gracefully: signed-in export returns a clean **502**, a missing cookie still gets **401**, health stays ok, and it recovers by itself | stopped the API container and requested the export |
 
 **Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
 
@@ -41,30 +46,31 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **123 passing, 0 failing** across 9 files | `cd backend && npm test` |
+| Automated tests | **129 Node tests + 19 C# tests, 0 failing** (Node: 10 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
 | Tests before this work | **0** | (none existed) |
-| Line coverage | **95.2%** (295/310) | `cd backend && npm run test:coverage` |
-| Statement coverage | 94.9% | same |
-| Branch coverage | 89.8% | same |
-| Function coverage | 96.2% | same |
-| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) | earlier measurements |
+| Line coverage (Node) | **95.3%** (302/317) | `cd backend && npm run test:coverage` |
+| Statement coverage | 95.1% | same |
+| Branch coverage | 89.9% | same |
+| Function coverage | 96.3% | same |
+| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) | earlier measurements |
 | Suite runtime | about 2.2 s (0.5 s before accounts existed; password hashing is the slowest part) | "Duration" line in `npm test` output |
 | External network calls during tests | **0** (IGDB and Twitch are mocked or stubbed) | tests pass offline |
 | `npm audit` | **0 vulnerabilities** | `cd backend && npm audit` |
 
-Tests per file: `auth.test.js` 38, `lists.test.js` 32, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `igdbClient.test.js` 6, `stats.test.js` 6, `igdbQuery.test.js` 4.
+Tests per file (Node): `auth.test.js` 38, `lists.test.js` 32, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `igdbClient.test.js` 6, `stats.test.js` 6, `library.test.js` 6, `igdbQuery.test.js` 4. C#: `CsvExportTests.cs` 19.
 
 Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the new code has a few defensive branches (a race on duplicate email, the migration branch for old databases) that tests do not trigger. Say that if asked; do not hide it.
 
 ### Size of the codebase (non-blank lines, excludes dependencies, build output, lockfiles)
 | Area | Lines |
 |---|---|
-| Backend source (Node/Express, JavaScript) | 660 |
+| Backend source (Node/Express, JavaScript) | 677 |
 | Backend scripts | 13 |
-| Backend tests | 966 (about 1.5 lines of test per line of source) |
+| Backend tests | 1029 (about 1.5 lines of test per line of source) |
 | Frontend JS/JSX (React) | 960 |
 | Frontend CSS | 894 |
-| C# export service | 71 |
+| C# export service | 89 (Program.cs 50, CsvExport.cs 39; was 71 lines. It grew because it now has proper CSV quoting and typed models; the database and session code is gone) |
+| C# tests | 74 |
 | TypeScript report CLI | 99 |
 | Docker + compose + nginx config | 107 |
 | CI workflow YAML | 112 |
@@ -74,9 +80,9 @@ Counts include comments. They are a rough size indicator, not a quality measure.
 ### Docker (measured 2026-10-08 on Docker Desktop 4.94 / engine 29.8.2, Windows 11, 30 GB RAM host)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Final image sizes | API **355 MB**, C# export **392 MB**, web (nginx) **94 MB**; **841 MB** total (re-measured 2026-10-11 after accounts; API was 354 MB) | `docker images` |
+| Final image sizes | API **355 MB**, C# export **340 MB** (was 392 MB before the export service stopped using SQLite), web (nginx) **94 MB**; **789 MB** total | `docker images` |
 | Size if shipped single-stage (builder stage image) | API 1.68 GB, C# 1.54 GB, web 1.8 GB | `docker build --target deps ./backend`, `--target build ./frontend`, `--target build ./export-service`, then `docker images` |
-| Reduction from multi-stage builds | API **78.9%**, C# **74.5%**, web **94.8%** (1 - final/builder) | computed from the two rows above |
+| Reduction from multi-stage builds | API **78.9%**, C# **73.8%** (1.3 GB builder stage to 340 MB; builder re-measured after the change), web **94.8%** (1 - final/builder) | computed from the rows above; builder sizes from `docker build --target ...` |
 | First build | 37 s (a failed earlier attempt had already pulled some base layers, so this is not a true cold start) | `docker compose build` |
 | No-cache rebuild, base images already local | **14 s** | `docker compose build --no-cache` |
 | Cached rebuild, nothing changed | **4 s** | `docker compose build` |
@@ -100,7 +106,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Docker job steps | Build all images 65 s (no layer cache on a fresh runner), start and healthy 7 s, smoke test under 1 s, tear down 11 s | `gh run view <id> --json jobs --jq '.jobs[].steps'` |
 | Test run as CI saw it | 7 files passed, 3.98 s | the "Run npm test" step log |
 | Second run (after bumping actions and pinning `ubuntu-24.04`, commit `b265060`) | All 5 passed again; about **86 s** wall-clock; Docker 86 s, C# build 21 s, backend tests 18 s, TS typecheck 16 s, frontend 12 s. Node 20 and `ubuntu-latest` warnings no longer appear | `gh run list` |
-| Runs measured | **2**. Durations are close (88 s then 86 s) but two samples are still not an average | see section 3 |
+| Third run (IGDB protection, commit `6a5f4a3`) | All 5 passed; about **80 s** wall-clock; Docker 79 s, C# build 21 s, TS typecheck 17 s, backend tests 13 s, frontend 13 s. Only the 2 old lint annotations | `gh run list` |
+| Runs measured | **3**. Wall-clock 88 s, 86 s, 80 s: consistent, but three samples are still not a reliable average | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -111,16 +118,16 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Password storage | scrypt (N=32768, r=8, p=1), random 16-byte salt per password, constant-time comparison; plaintext never stored | tests inspect the stored hash |
 | Sessions | 256-bit random token in an `HttpOnly`, `SameSite=Lax` cookie; the database stores only the token's SHA-256 hash; 30-day sliding expiry; new session on login and register | tests inspect the cookie flags and the table |
 | Authorization | Every list, game, stats and export query is scoped to the signed-in user; another user's list returns **404**, exactly like a list that does not exist | 6 isolation tests plus a live check with two users |
-| Export service | The C# service validates the same session cookie itself and exports only that user's rows; no cookie or a forged cookie gets **401** | live check with two users, and the CI smoke script |
+| Export service | The C# service no longer opens the database or checks sessions itself. It forwards the session cookie to the API's `GET /api/library`, which does the check; a missing or forged cookie gets **401**, and an API outage gets a clean **502** | live checks with two users, an API-stopped test, and the CI smoke script |
 | Login abuse | 10 attempts per 15 minutes per IP, then 429. Unknown emails run the same password-hashing work as wrong passwords (a dummy hash), which is meant to hide which emails exist; I did not measure response times to confirm it | rate-limit unit test, and 13 live requests through nginx |
 | Cleanup | Guests unused for 90 days and expired sessions are purged daily; their lists and games cascade-delete | `purgeStale` tests |
 | Browser flow | Guest, create list, upgrade to account, sign out (UI returns to the empty visitor state), wrong password shows an error, sign in restores the library | driven in the in-app browser against a throwaway database |
 | Layout | Header has no horizontal overflow at 1280 px and 375 px wide | measured in the browser; I could not capture screenshots in this session, so I have not looked at it visually |
 
 ### Architecture facts
-- **16** REST routes in the Node API (4 of them auth routes), **2** in the C# service.
+- **17** REST routes in the Node API (4 of them auth routes, 1 the library route the export uses), **2** in the C# service.
 - **3 languages:** JavaScript (API and UI), C# (export service), TypeScript (report CLI).
-- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build, Docker stack smoke test. All 5 passed on their first GitHub run (see the CI table above).
+- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 passed on their first GitHub run (see the CI table above); the C# test step is new and has not run on GitHub yet.
 - Verified locally: lint has 0 errors and 2 warnings; `tsc --noEmit` is clean; `dotnet build` has 0 errors.
 
 ---
@@ -159,6 +166,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 14. **Fixed (2026-10-11):** the dashboard stats route used to return a 500 with no data if IGDB failed. It now returns the counts from our own database and marks the hour totals unavailable; the page shows “—” with a note. Verified with tests and in the browser with deliberately invalid IGDB credentials.
 15. **Partly addressed (2026-10-11):** an IGDB attribution now appears in the footer. Still open: I could not read IGDB's official terms, so whether the site counts as non-commercial, and what the rules are on caching or storing IGDB data, are unconfirmed. Confirm at api-docs.igdb.com before launch and before building the planned IGDB cache.
 16. **My own slip, logged for honesty (2026-10-11):** while checking that `app.js` still loaded, I ran a command that imported it, and importing opens the real `backend/backlog.db`, so the account migration was applied to your real database earlier than planned. It is the same additive migration the server runs on first start. I checked afterwards: all 4 game rows are identical to the pre-migration backup, there are 0 users and 0 sessions, and your one list is still unowned. Lesson: set `DB_PATH` to a throwaway database for any ad-hoc script that touches the app.
+17. **Found by measuring before the rewrite (2026-10-11), fixed:** the old export corrupted awkward game names (see the CSV correctness row in the improvement log) and shared a database file between two services, which tied them to one machine. Both fixed by making the C# service an API client with proper CSV quoting. New trade-off: export now depends on the API being up (handled with a 502). I had said the service would get smaller; it actually grew from 71 to 89 lines, because correct CSV handling takes code. What shrank is the risky part (duplicated session logic, database access).
 
 ---
 
@@ -225,15 +233,15 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 browser -> nginx :8080 (only published port)
               |-- /            static React bundle (SPA fallback to index.html)
               |-- /api/*   ->  api:4000     (Node, writes SQLite)
-              '-- /export/* -> export:5000  (C#, reads SQLite)
-                                  both mount the named volume "backlog-data" at /data
+              '-- /export/* -> export:5000  (C#, asks the API for the user's library, writes CSV)
+                                  only the api container mounts the data volume "backlog-data" at /data
 ```
 - **Multi-stage builds.** The Node builder stage is the full image with compilers, because `better-sqlite3` is a native module. The runtime stage is `node:24-slim` and only copies `node_modules`, so the toolchain is not shipped. The C# image builds with the SDK and runs on the much smaller ASP.NET runtime image. The frontend ends as nginx plus static files, with no Node at all.
 - **Same-origin through nginx.** The browser only talks to one origin, so no CORS and no hardcoded `localhost` URLs. The frontend is built with empty `VITE_*` values, which makes it use relative URLs. I confirmed the bundle contains zero `localhost` references in that mode.
 - **Why no database container.** The app uses SQLite, which is a file. A named volume holds it. Adding Postgres only to fill a compose slot would be a larger migration that has to be defended in an interview.
 - **Secrets stay out of images.** The IGDB credentials come from the environment at runtime (root `.env`, git-ignored), never `COPY`ed in. Compose fails fast with a clear message if they are missing.
-- **Least privilege.** The API runs as the unprivileged `node` user. `/data` is created and owned by that user in the image, so a fresh named volume inherits it. The export container runs as the same uid (1000) so both can use SQLite's `-wal` and `-shm` files.
-- **SQLite gotcha.** The database is in WAL mode, which uses extra `-wal` and `-shm` files. Even a read-only connection needs to open the `-shm`, so the volume is mounted read-write for the export service (its connection is still opened with `Mode=ReadOnly`). Use a named volume, not a Windows bind mount, because WAL's shared memory does not work reliably across the Windows/Linux file boundary.
+- **Least privilege.** The API runs as the unprivileged `node` user. `/data` is created and owned by that user in the image, so a fresh named volume inherits it. The export container has no volumes at all (`docker inspect` shows an empty mount list).
+- **SQLite and the shared-file problem (resolved).** The database is in WAL mode, which uses extra `-wal` and `-shm` files, so two containers had to share one volume, run as the same uid, and stay on one machine. Making the export service call the API removed that coupling: only the API touches the file, and the export service can run on any host. Use a named volume, not a Windows bind mount, because WAL's shared memory does not work reliably across the Windows/Linux file boundary.
 - **Startup order.** The API has a healthcheck, and `export` waits for it with `depends_on: condition: service_healthy`, so the database file exists before the C# service starts.
 
 ### 5.4 What actually happened on the first Docker run
@@ -279,7 +287,7 @@ other device       POST /api/auth/login       -> optionally merges that device's
 
 **Passwords:** scrypt is deliberately slow and memory-hungry, which makes offline guessing expensive. Each password gets its own random salt so identical passwords produce different hashes. Comparison uses `timingSafeEqual`. It ships in Node, so there is no native module to compile in Docker. When the email is unknown, login still hashes against a dummy value, so response time does not reveal which emails have accounts. (Registration does say when an email is taken. Hiding that needs email verification, which is not built.)
 
-**Authorization (the part that matters most):** every query that touches lists or games includes the owner. A list you do not own returns 404, the same as a list that does not exist, so the API never confirms that someone else's id exists. This closes IDOR (insecure direct object reference), where a user changes an id in a URL to reach someone else's data. Because the C# service reads the database directly, it re-implements the same session check and owner filter; otherwise it would have bypassed all of this.
+**Authorization (the part that matters most):** every query that touches lists or games includes the owner. A list you do not own returns 404, the same as a list that does not exist, so the API never confirms that someone else's id exists. This closes IDOR (insecure direct object reference), where a user changes an id in a URL to reach someone else's data. The C# export service no longer touches the database: it forwards the session cookie to the API (`GET /api/library`), so the session check and owner filter exist in exactly one place.
 
 **Things I would say honestly in an interview**
 - It is session-cookie auth I built to learn the mechanics. For a production product with sensitive data I would consider a managed identity provider (Auth0, Cognito) or an established library, and I would add email verification and password reset.
@@ -310,3 +318,29 @@ other device       POST /api/auth/login       -> optionally merges that device's
 - *Why not just cache IGDB results?* It would cut calls a lot, and it is on the roadmap, but IGDB's rules on caching and storing data are unconfirmed, so the rules come first.
 - *Why not require login for search?* A bot can create a guest session for free, so it would not stop abuse. Rate limiting does.
 - *Is 60 per minute the right number?* It is an estimate. Tune it from real traffic, and watch for 429s.
+
+### 5.8 Removing the shared database between services (the export rewrite)
+
+**Before:** the C# export service opened the same SQLite file as the Node API and re-implemented the session check and the ownership filter. Two codebases had to agree on the database layout and on the security rules. This is a well-known smell, the "shared database" between services.
+
+**After:**
+```
+browser -> nginx -> C# /export/csv  --(forwards the session cookie)-->  Node GET /api/library -> SQLite
+                          |                                                    |
+                          '---- builds the CSV from the returned JSON <--------'
+```
+The API is the only thing that touches the data and the only thing that understands sessions. The C# service depends on the API's **contract** (the shape of the JSON), not on its storage.
+
+**What it bought:** the export service no longer needs a disk, a shared volume, or a matching uid, so it can run on any host. 14 lines of duplicated session logic and the SQLite package are gone. Security rules now live in exactly one place, which is easier to review and test.
+
+**What it cost (say this honestly):** one extra network hop, a new dependency (export fails if the API is down, so it returns a clean 502), and slightly more C# code overall (71 to 89 lines) because I added correct CSV quoting and typed models.
+
+**CSV details worth knowing**
+- RFC 4180 quoting: a value with a comma, quote or line break is wrapped in quotes and embedded quotes are doubled. The old code replaced commas with spaces, which silently changed your data, and split a name containing a line break into two records.
+- CSV (formula) injection: a value starting with `=`, `+`, `-` or `@` can be run as a formula when the file is opened in a spreadsheet. A leading apostrophe makes it plain text. The trade-off is that the apostrophe shows in the cell.
+- The service only forwards a cookie that matches the expected token format, and only to the API address in its configuration, so a crafted cookie cannot inject headers and a user cannot make it call somewhere else.
+
+**Likely questions**
+- *Why not just do the export in Node?* It would be about 15 lines. The C# service is there to show a second language and a clean service boundary; the design lesson (depend on contracts, not databases) is what carries over.
+- *Why forward the cookie instead of a service-to-service token?* It is simplest and keeps one login system. For a larger system, a dedicated internal credential would limit what the export service can do.
+- *What if the API is slow?* The call has a 10 second timeout and returns a 502 instead of hanging.
