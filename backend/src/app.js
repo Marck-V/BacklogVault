@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { igdbRequest } from "./igdbClient.js";
 import { escapeIgdbString } from "./igdbQuery.js";
 import { createIgdbLimiter } from "./igdbLimiter.js";
@@ -16,6 +17,9 @@ const app = express();
 // Tell Express how many proxies sit in front, so rate limiting sees the real client IP (see config.js).
 const proxyHops = trustProxyHops();
 if (proxyHops > 0) app.set("trust proxy", proxyHops);
+
+// Standard security headers (and no X-Powered-By, which tells attackers which framework to target).
+app.use(helmet());
 
 // Credentialed CORS cannot use "*": only the listed origins may send the session cookie cross-origin (local dev).
 app.use(

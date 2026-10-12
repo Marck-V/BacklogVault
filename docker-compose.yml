@@ -1,3 +1,10 @@
+# Docker keeps container logs forever by default, which fills a small disk. Keep at most 3 files of 10 MB per service.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     build: ./backend
@@ -11,6 +18,11 @@ services:
       COOKIE_SECURE: "false"
     volumes:
       - backlog-data:/data
+    logging: *default-logging
+    # A ceiling, not a reservation: a runaway process is stopped before it can take the whole (small) server down
+    mem_limit: 384m
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   export:
@@ -21,6 +33,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    logging: *default-logging
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   web:
@@ -31,6 +47,10 @@ services:
     depends_on:
       - api
       - export
+    logging: *default-logging
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:

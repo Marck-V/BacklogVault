@@ -1,11 +1,17 @@
 import "dotenv/config";
 import app from "./app.js";
+import db from "./db.js";
 import { purgeStale } from "./auth.js";
+import { createShutdown } from "./shutdown.js";
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
 });
+
+const shutdown = createShutdown({ server, db });
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 // Remove expired sessions and guests nobody has used for 90 days (their lists cascade-delete with them).
 const purge = () => {

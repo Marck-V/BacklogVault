@@ -1,0 +1,36 @@
+# Keeps dependencies, base images and CI actions up to date by opening a pull request for each update.
+# Base images are pinned by digest, so without this they would never receive security fixes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /ts-report
+    schedule:
+      interval: weekly
+  - package-ecosystem: nuget
+    directory: /export-service.tests
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /export-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
