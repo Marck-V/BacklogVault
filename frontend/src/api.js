@@ -71,6 +71,10 @@ export function setEstimateIncluded(igdbId, included) {
   })
 }
 
+export function getGenreBreakdown() {
+  return request('/api/stats/genres')
+}
+
 export function getCurrentlyPlaying() {
   return request('/api/stats/currently-playing')
 }

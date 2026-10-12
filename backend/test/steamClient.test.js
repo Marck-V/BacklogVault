@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { parseSteamIdentifier, resolveSteamId, fetchOwnedGames, SteamError, MAX_OWNED_APPS } from "../src/steam.js";
+import { parseSteamIdentifier, resolveSteamId, fetchOwnedGames, fetchRecentlyPlayed, SteamError, MAX_OWNED_APPS } from "../src/steam.js";
 
 const KEY = "TESTKEY0123456789abcdef0123456789";
 const ID = "76561197960287930";
@@ -201,5 +201,41 @@ describe("failures never leak the API key", () => {
     expect(err).toMatchObject({ kind: "unavailable", status: 502 });
     expect(JSON.stringify(err)).not.toContain(KEY);
     timeout.mockRestore();
+  });
+});
+
+describe("fetchRecentlyPlayed", () => {
+  it("returns the last two weeks of play, most played first", async () => {
+    stubFetch((url) => {
+      expect(url.pathname).toBe("/IPlayerService/GetRecentlyPlayedGames/v1/");
+      expect(url.searchParams.get("steamid")).toBe(ID);
+      return jsonResponse({
+        response: {
+          total_count: 3,
+          games: [
+            { appid: 220, name: "Half-Life 2", playtime_2weeks: 30, playtime_forever: 500 },
+            { appid: 570, name: "Dota 2", playtime_2weeks: 600 },
+            { appid: "bad", name: "Broken", playtime_2weeks: 5 },
+          ],
+        },
+      });
+    });
+    expect(await fetchRecentlyPlayed(ID, KEY)).toEqual([
+      { appid: 570, name: "Dota 2", minutes: 600 },
+      { appid: 220, name: "Half-Life 2", minutes: 30 },
+    ]);
+  });
+
+  it("gives an empty list when nothing was played or the profile is private", async () => {
+    stubFetch(() => jsonResponse({ response: {} }));
+    expect(await fetchRecentlyPlayed(ID, KEY)).toEqual([]);
+  });
+
+  it("throws a key-free error when Steam is down", async () => {
+    stubFetch(() => new Response("no", { status: 503 }));
+    const err = await fetchRecentlyPlayed(ID, KEY).catch((e) => e);
+    expect(err).toBeInstanceOf(SteamError);
+    expect(JSON.stringify(err)).not.toContain(KEY);
+    expect(err.message).not.toContain(KEY);
   });
 });

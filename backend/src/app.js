@@ -12,6 +12,7 @@ import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
 import importRouter from "./importRoutes.js";
 import db from "./db.js";
+import { currentlyPlaying, genreBreakdown } from "./dashboardData.js";
 
 const app = express();
 
@@ -237,17 +238,26 @@ app.put("/api/stats/time-to-beat/includes/:igdbId", (req, res) => {
   res.json({ igdb_id: igdbId, included: req.body.included });
 });
 
-app.get("/api/stats/currently-playing", (req, res) => {
-  const games = db
-    .prepare(
-      `SELECT lg.igdb_id, lg.name, lg.cover_url, MIN(lg.added_at) AS added_at
-       FROM list_games lg JOIN lists l ON l.id = lg.list_id
-       WHERE l.user_id = ? AND lg.status = 'Playing'
-       GROUP BY lg.igdb_id
-       ORDER BY added_at DESC`
-    )
-    .all(req.user?.id ?? 0);
-  res.json(games);
+app.get("/api/stats/currently-playing", async (req, res) => {
+  // Visitors without a session have no games and no Steam link.
+  if (!req.user) return res.json({ source: "manual", games: [] });
+  try {
+    res.json(await currentlyPlaying(req.user.id));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load currently playing games" });
+  }
+});
+
+app.get("/api/stats/genres", igdbLimiter, async (req, res) => {
+  if (!req.user) return res.json({ game_count: 0, genres: [], games_without_genre: 0 });
+  try {
+    const breakdown = await genreBreakdown(req.user.id);
+    res.json(breakdown ?? { igdb_unavailable: true, game_count: null, genres: [], games_without_genre: 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load the genre breakdown" });
+  }
 });
 
 // The signed-in user's whole library in one response. The export service builds its CSV from this

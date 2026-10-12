@@ -67,6 +67,12 @@ if (!listGamesColumns.includes("date_completed")) {
   db.exec("ALTER TABLE list_games ADD COLUMN date_completed TEXT");
 }
 
+const usersColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+if (!usersColumns.includes("steam_id")) {
+  // The Steam account the user last imported from; it drives the dashboard's "recently played" widget.
+  db.exec("ALTER TABLE users ADD COLUMN steam_id TEXT");
+}
+
 const listsColumns = db.prepare("PRAGMA table_info(lists)").all().map((c) => c.name);
 if (!listsColumns.includes("user_id")) {
   db.exec("ALTER TABLE lists ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE");

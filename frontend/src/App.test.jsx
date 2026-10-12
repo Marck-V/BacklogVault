@@ -12,7 +12,8 @@ function mockApi(routes = {}) {
     '/api/auth/me': { user: null },
     '/api/lists': [],
     '/api/stats/time-to-beat': EMPTY_STATS,
-    '/api/stats/currently-playing': [],
+    '/api/stats/currently-playing': { source: 'manual', games: [] },
+    '/api/stats/genres': { game_count: 0, genres: [], games_without_genre: 0 },
   }
   const table = { ...defaults, ...routes }
   vi.stubGlobal(

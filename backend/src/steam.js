@@ -119,3 +119,21 @@ export async function fetchOwnedGames(steamId, apiKey) {
       minutes: Number.isFinite(game.playtime_forever) && game.playtime_forever > 0 ? game.playtime_forever : 0,
     }));
 }
+
+// Games played in the last two weeks, most played first: [{ appid, name, minutes }] (minutes are for those two weeks).
+// Steam answers with no games both for "nothing played lately" and for a private profile, so both give [].
+export async function fetchRecentlyPlayed(steamId, apiKey, count = 12) {
+  const body = await steamGet("/IPlayerService/GetRecentlyPlayedGames/v1/", { steamid: steamId, count }, apiKey);
+  const result = body?.response;
+  if (!result || typeof result !== "object") throw unavailable();
+  if (!Array.isArray(result.games)) return [];
+
+  return result.games
+    .filter((game) => Number.isInteger(game?.appid) && game.appid > 0)
+    .map((game) => ({
+      appid: game.appid,
+      name: typeof game.name === "string" && game.name.trim() ? game.name.trim() : `Steam app ${game.appid}`,
+      minutes: Number.isFinite(game.playtime_2weeks) && game.playtime_2weeks > 0 ? game.playtime_2weeks : 0,
+    }))
+    .sort((a, b) => b.minutes - a.minutes);
+}

@@ -1,4 +1,5 @@
 import express from "express";
+import db from "./db.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { findOwnedList } from "./ownership.js";
 import { createImportLimiter } from "./writeLimiters.js";
@@ -29,6 +30,8 @@ router.post(
       const steamId = await resolveSteamId(identifier, apiKey);
       const owned = await fetchOwnedGames(steamId, apiKey);
       const summary = await importOwnedGames({ list, owned });
+      // Remember the account so the dashboard can show what you played lately without asking again.
+      db.prepare("UPDATE users SET steam_id = ? WHERE id = ?").run(steamId, req.user.id);
       res.json({ steamId, ...summary });
     } catch (err) {
       if (!(err instanceof SteamError)) throw err;
