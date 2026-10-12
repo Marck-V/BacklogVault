@@ -95,6 +95,14 @@ jobs:
           set -e
           U=http://localhost:8080
           J='Content-Type: application/json'
+
+          # "Running" is not the same as "accepting connections", and the C# service has no health check of its own,
+          # so wait (up to 30 seconds) until nginx and the export service both answer before testing anything.
+          for i in $(seq 1 30); do
+            if curl -fsS $U/api/health > /dev/null 2>&1 && curl -fsS $U/export/health > /dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
           curl -fsS $U/ | grep -q '<div id="root">'
           curl -fsS $U/lists/1 | grep -q '<div id="root">'
           curl -fsS $U/api/health

@@ -47,6 +47,14 @@ services:
     depends_on:
       - api
       - export
+    # Without this, "running" is taken to mean "ready", but nginx is still starting up for a moment after the
+    # container starts, and anything that connects in that gap (a deploy check, CI) gets a connection reset.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     logging: *default-logging
     mem_limit: 64m
     security_opt:
