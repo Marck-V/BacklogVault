@@ -8,6 +8,8 @@ export default defineConfig({
       AUTH_RATE_LIMIT_MAX: "1000",
       IGDB_ROUTE_RATE_LIMIT: "1000",
       IGDB_MIN_INTERVAL_MS: "0",
+      WRITE_RATE_LIMIT: "100000",
+      GUEST_RATE_LIMIT: "100000",
     },
     include: ["test/**/*.test.js"],
   },

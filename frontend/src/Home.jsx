@@ -105,6 +105,7 @@ export default function Home() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New list name..."
+            maxLength={100}
           />
           <button type="submit">Create List</button>
         </form>

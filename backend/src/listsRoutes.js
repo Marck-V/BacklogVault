@@ -1,6 +1,8 @@
 import express from "express";
 import db from "./db.js";
 import { ensureUser } from "./auth.js";
+import { LIMITS } from "./limits.js";
+import { createGuestLimiter } from "./writeLimiters.js";
 
 const router = express.Router();
 
@@ -16,14 +18,23 @@ router.get("/", (req, res) => {
   res.json(lists);
 });
 
-router.post("/", (req, res) => {
-  const { name } = req.body;
-  if (typeof name !== "string" || !name.trim()) {
+router.post("/", createGuestLimiter(), (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name) {
     return res.status(400).json({ error: "Name is required" });
+  }
+  if (name.length > LIMITS.listName) {
+    return res.status(400).json({ error: `Name must be at most ${LIMITS.listName} characters` });
+  }
+  if (req.user) {
+    const { n } = db.prepare("SELECT COUNT(*) AS n FROM lists WHERE user_id = ?").get(req.user.id);
+    if (n >= LIMITS.listsPerUser) {
+      return res.status(409).json({ error: `You can have at most ${LIMITS.listsPerUser} lists` });
+    }
   }
   // Validate first so invalid requests never create a guest account.
   const user = ensureUser(req, res);
-  const result = db.prepare("INSERT INTO lists (name, user_id) VALUES (?, ?)").run(name.trim(), user.id);
+  const result = db.prepare("INSERT INTO lists (name, user_id) VALUES (?, ?)").run(name, user.id);
   const list = db.prepare("SELECT * FROM lists WHERE id = ?").get(result.lastInsertRowid);
   res.status(201).json(list);
 });
@@ -44,12 +55,27 @@ router.delete("/:id", (req, res) => {
 });
 
 router.post("/:id/games", (req, res) => {
-  const { igdb_id, name, cover_url } = req.body;
-  if (!igdb_id || !name) {
-    return res.status(400).json({ error: "igdb_id and name are required" });
+  const { igdb_id, cover_url } = req.body ?? {};
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!Number.isInteger(igdb_id) || igdb_id <= 0 || !name) {
+    return res.status(400).json({ error: "igdb_id (a positive integer) and name are required" });
+  }
+  if (name.length > LIMITS.gameName) {
+    return res.status(400).json({ error: `name must be at most ${LIMITS.gameName} characters` });
+  }
+  if (
+    cover_url != null &&
+    (typeof cover_url !== "string" || cover_url.length > LIMITS.coverUrl || !cover_url.startsWith("https://"))
+  ) {
+    return res.status(400).json({ error: `cover_url must be an https URL of at most ${LIMITS.coverUrl} characters` });
   }
   const list = ownedList(req);
   if (!list) return res.status(404).json({ error: "List not found" });
+
+  const { n } = db.prepare("SELECT COUNT(*) AS n FROM list_games WHERE list_id = ?").get(list.id);
+  if (n >= LIMITS.gamesPerList) {
+    return res.status(409).json({ error: `A list can hold at most ${LIMITS.gamesPerList} games` });
+  }
 
   try {
     const result = db
@@ -84,6 +110,15 @@ router.put("/:id/games/:gameId", (req, res) => {
   }
   if (rating != null && (!Number.isInteger(rating) || rating < 1 || rating > 10)) {
     return res.status(400).json({ error: "rating must be an integer between 1 and 10" });
+  }
+  if (notes != null && (typeof notes !== "string" || notes.length > LIMITS.notes)) {
+    return res.status(400).json({ error: `notes must be text of at most ${LIMITS.notes} characters` });
+  }
+  if (
+    hoursPlayed != null &&
+    (typeof hoursPlayed !== "number" || !Number.isFinite(hoursPlayed) || hoursPlayed < 0 || hoursPlayed > LIMITS.maxHours)
+  ) {
+    return res.status(400).json({ error: `hoursPlayed must be a number between 0 and ${LIMITS.maxHours}` });
   }
 
   const existing = db

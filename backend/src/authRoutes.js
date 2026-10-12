@@ -1,6 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import db from "./db.js";
+import { asyncHandler } from "./asyncHandler.js";
 import {
   hashPassword,
   verifyPassword,
@@ -44,7 +45,7 @@ router.get("/me", (req, res) => {
   res.json({ user: req.user });
 });
 
-router.post("/register", limiter, async (req, res) => {
+router.post("/register", limiter, asyncHandler(async (req, res) => {
   const creds = readCredentials(req.body);
   const problem = validateNewCredentials(creds);
   if (problem) return res.status(400).json({ error: problem });
@@ -82,9 +83,9 @@ router.post("/register", limiter, async (req, res) => {
 
   setSessionCookie(res, createSession(userId));
   res.status(201).json({ user: { id: userId, email: creds.email, isGuest: false } });
-});
+}));
 
-router.post("/login", limiter, async (req, res) => {
+router.post("/login", limiter, asyncHandler(async (req, res) => {
   const { email, password } = readCredentials(req.body);
   if (!email || !password || password.length > 128) {
     return res.status(400).json({ error: "Email and password are required" });
@@ -111,7 +112,7 @@ router.post("/login", limiter, async (req, res) => {
 
   setSessionCookie(res, createSession(user.id));
   res.json({ user: { id: user.id, email: user.email, isGuest: false }, mergedLists });
-});
+}));
 
 router.post("/logout", (req, res) => {
   if (req.sessionToken) destroySession(req.sessionToken);
