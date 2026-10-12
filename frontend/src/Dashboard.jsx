@@ -7,9 +7,16 @@ function formatHours(seconds) {
   return `${Math.round(seconds / 3600).toLocaleString()}\u00a0hours`
 }
 
-function formatHoursPlayed(hours) {
-  if (hours == null) return '—'
-  return `${Math.round(hours).toLocaleString()}\u00a0hours`
+// A big number with a small "hours" beside it. If the card is too narrow for both, the unit drops to its own line as a
+// whole word instead of being split in the middle.
+function HoursValue({ hours }) {
+  if (hours == null) return <span className="stat-value">—</span>
+  return (
+    <span className="stat-value">
+      <span className="stat-number">{Math.round(hours).toLocaleString()}</span>{' '}
+      <span className="stat-unit">hours</span>
+    </span>
+  )
 }
 
 // Colours for the genre chart, in order of size. "Other" always gets the last, neutral one.
@@ -214,24 +221,24 @@ export default function Dashboard() {
 
       <div className="dashboard">
         <div className="stat-card">
-          <span className="stat-value">{stats.game_count}</span>
           <span className="stat-label">Games in progress or backlogged</span>
+          <span className="stat-value">{stats.game_count}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value">{formatHours(stats.total_main_story_seconds)}</span>
           <span className="stat-label">Time remaining (main story)</span>
+          <HoursValue hours={stats.total_main_story_seconds == null ? null : stats.total_main_story_seconds / 3600} />
         </div>
         <div className="stat-card">
-          <span className="stat-value">{formatHours(stats.total_completionist_seconds)}</span>
           <span className="stat-label">Time remaining (100%)</span>
+          <HoursValue hours={stats.total_completionist_seconds == null ? null : stats.total_completionist_seconds / 3600} />
         </div>
         <div className="stat-card">
-          <span className="stat-value">{stats.completed_count}</span>
-          <span className="stat-label">Games completed</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-value">{formatHoursPlayed(stats.total_hours_played)}</span>
           <span className="stat-label">Total hours played</span>
+          <HoursValue hours={stats.total_hours_played} />
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">Games completed</span>
+          <span className="stat-value">{stats.completed_count}</span>
         </div>
       </div>
 
