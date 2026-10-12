@@ -9,6 +9,7 @@ import { STATUSES } from './statuses'
 import ConfirmDialog from './ConfirmDialog'
 import NotFound from './NotFound'
 import { usePageTitle } from './usePageTitle'
+import { SORT_OPTIONS, sortGames, formatPlaytime } from './sortGames'
 
 const TABS = ['All', ...STATUSES]
 
@@ -21,6 +22,7 @@ export default function ListView() {
   const [activeTab, setActiveTab] = useState('All')
   const [pendingRemove, setPendingRemove] = useState(null)
   const [viewMode, setViewMode] = useState('grid')
+  const [sortKey, setSortKey] = useState('recent')
 
   usePageTitle(list?.name)
 
@@ -66,9 +68,11 @@ export default function ListView() {
 
   const visibleGames = useMemo(() => {
     if (!list) return []
-    if (activeTab === 'All') return list.games
-    return list.games.filter((g) => g.status === activeTab)
-  }, [list, activeTab])
+    const filtered = activeTab === 'All' ? list.games : list.games.filter((g) => g.status === activeTab)
+    return sortGames(filtered, sortKey)
+  }, [list, activeTab, sortKey])
+
+  const showPlaytime = sortKey.startsWith('playtime')
 
   if (error === 'List not found') return <NotFound />
   if (error) return <p className="error">{error}</p>
@@ -81,21 +85,33 @@ export default function ListView() {
 
       <div className="list-toolbar">
         <h2>Games in this list</h2>
-        <div className="view-toggle">
-          <button
-            type="button"
-            className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-            onClick={() => setViewMode('grid')}
-          >
-            Grid
-          </button>
-          <button
-            type="button"
-            className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-            onClick={() => setViewMode('list')}
-          >
-            List
-          </button>
+        <div className="list-toolbar-controls">
+          <label className="sort-control">
+            <span>Sort by</span>
+            <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="view-toggle">
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+            >
+              Grid
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
@@ -121,6 +137,7 @@ export default function ListView() {
             <div key={game.id} className="game-card clickable" onClick={() => setActiveGame(game)}>
               {game.cover_url && <img src={game.cover_url} alt={game.name} />}
               <h3>{game.name}</h3>
+              {showPlaytime && <p className="game-playtime">{formatPlaytime(game.hours_played)}</p>}
               <div className="game-card-actions">
                 <StatusBubble
                   status={game.status}
@@ -149,6 +166,7 @@ export default function ListView() {
                 <div className="game-row-cover-placeholder" />
               )}
               <span className="game-row-name">{game.name}</span>
+              {showPlaytime && <span className="game-row-playtime">{formatPlaytime(game.hours_played)}</span>}
               <div className="game-row-actions" onClick={(e) => e.stopPropagation()}>
                 <StatusBubble
                   status={game.status}

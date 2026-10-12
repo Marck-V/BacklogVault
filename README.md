@@ -13,7 +13,7 @@ open it anywhere.
 ## Features
 
 - **Lists and games:** create lists, search IGDB, add games, filter by status (Backlog, Playing, Completed, Dropped),
-  switch between grid and list views.
+  sort (recently added, A-Z, longest or lowest playtime), and switch between grid and list views.
 - **Details per game:** developer, release date, time to beat, rating, hours played and notes.
 - **Dashboard:** counts, total time left across your backlog (main story and 100%), games completed, and what you are
   playing now.
