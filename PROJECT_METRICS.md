@@ -44,6 +44,13 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 | 2026-10-12 | Repeat visits | no caching headers, only an ETag | hashed build files cached for 1 year (`immutable`); the page itself must be re-checked (`no-cache`) so a new deploy is picked up; a conditional request for the JS returns **304** | `curl -I` and a conditional `curl` |
 | 2026-10-12 | Browser security headers | **0 of 5** (Content-Security-Policy, nosniff, frame, referrer, permissions) on pages; the API sent `X-Powered-By: Express`; nginx disclosed its version in the `Server` header | all 5 on pages, `X-Powered-By` removed, nginx version hidden, helmet's headers on the API, nosniff on the export service. Verified in a real browser: the app works, IGDB covers load, and an off-host image and an inline script are both **blocked**, with no violations from the app itself | headers via `curl -I`; browser console and a `securitypolicyviolation` listener; `headers.test.js` (5) |
 | 2026-10-12 | Production Docker settings | logs unbounded; no memory limits; floating base-image tags (`node:24`, `nginx:alpine`, ...) | logs capped at 3 files of 10 MB per service; memory ceilings of 384, 256 and 64 MB (idle use measured at 22, 18 and 16 MiB); `no-new-privileges` on all 3; **6 of 6** base images pinned by digest, with Dependabot proposing weekly updates (8 update entries: npm x3, NuGet, Docker x3, GitHub Actions) | `docker inspect` for log options, memory and security options; `docker stats --no-stream`; `.github/dependabot.yml` |
+| 2026-10-12 | Unknown URLs | an unknown path such as `/nope` showed only the header and footer, a blank page with no way back (measured in a browser) | a not-found page with a link home, also used when a list does not exist; the header, footer and IGDB attribution stay | real browser on the dev server and through nginx; 4 tests in `App.test.jsx` |
+| 2026-10-12 | Page titles and metadata | the tab said `frontend` on every page; no meta description; Vite's default favicon | `BacklogVault` on the home page, `<list name> · BacklogVault` on a list, `Page not found · BacklogVault`; description, theme color and Open Graph tags added; a BacklogVault favicon | browser `document.title` and `<head>`; 3 tests |
+| 2026-10-12 | Errors while rendering | no error boundary: an error in any component would blank the whole page | an error boundary shows a message and a reload button inside the app (header kept) and clears itself on navigation | 5 tests, including a list page that really throws while rendering |
+| 2026-10-12 | Frontend tests | **0** | **13**, run in CI (the frontend job now runs lint, tests and build) | `cd frontend && npm test` |
+| 2026-10-12 | Frontend lint warnings and dead files | **2** warnings (a constant exported from a component file, an effect missing a dependency); **4** unused Vite template files | **0** warnings and **0** unused template files | `cd frontend && npm run lint` |
+| 2026-10-12 | Frontend dependency vulnerabilities | **5 high-severity advisories** (react-router, postcss, nanoid, source-map-js), present in the lockfile I had already committed because the frontend had never been re-audited | **0** after `npm audit fix` (only compatible updates; react-router 7.18.4); lint, build and tests still pass | `cd frontend && npm audit` |
+| 2026-10-12 | README and setup docs | an 11-line README whose setup step pointed at a `backend/.env.example` that did not exist; a leftover Vite template README in `frontend/` | a full README (features, architecture, run with and without Docker, configuration table, tests, security notes, limitations) and a real `backend/.env.example` | `README.md` |
 
 **Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
 
@@ -54,7 +61,7 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **204 Node tests passing + 1 that runs only on Linux and in CI, plus 19 C# tests; 0 failing** (Node: 17 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
+| Automated tests | **204 Node tests passing + 1 that runs only on Linux and in CI, 19 C# tests and 13 frontend tests; 0 failing** (Node: 17 files) | `cd backend && npm test`, `dotnet test export-service.tests`, `cd frontend && npm test` |
 | Tests before this work | **0** | (none existed) |
 | Line coverage (Node) | **95.2%** (359/377) | `cd backend && npm run test:coverage` |
 | Statement coverage | 94.5% | same |
@@ -75,8 +82,8 @@ Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the n
 | Backend source (Node/Express, JavaScript) | 808 |
 | Backend scripts | 13 |
 | Backend tests | 1496 (about 1.9 lines of test per line of source) |
-| Frontend JS/JSX (React) | 967 |
-| Frontend CSS | 894 |
+| Frontend JS/JSX (React) | 1189, of which 159 are tests (1030 without tests) |
+| Frontend CSS | 911 |
 | C# export service | 94 (Program.cs 55, CsvExport.cs 39) |
 | C# tests | 74 |
 | TypeScript report CLI | 99 |
@@ -117,7 +124,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Third run (IGDB protection, commit `6a5f4a3`) | All 5 passed; about **80 s** wall-clock; Docker 79 s, C# build 21 s, TS typecheck 17 s, backend tests 13 s, frontend 13 s. Only the 2 old lint annotations | `gh run list` |
 | Fourth run (export service as an API client, commit `2453adf`) | All 5 passed; about **72 s** wall-clock; Docker 71 s, C# build plus tests 25 s, TS typecheck 20 s, frontend 19 s, backend tests 15 s. The new C# test step ran on GitHub: **19 passed, 0 failed**. Node tests: 129 passed. Only the 2 old lint annotations | `gh run list` |
 | Fifth run (pre-deployment fixes, commit `a6f331f`) | All 5 passed; about **92 s** wall-clock; Docker 91 s, C# build plus tests 20 s, backend tests 19 s, TS typecheck 18 s, frontend 9 s. Node tests: **193 passed**; C# tests: **19 passed**. Only the 2 old lint annotations | `gh run list` |
-| Runs measured | **5**. Wall-clock 88 s, 86 s, 80 s, 72 s, 92 s. That is a spread of about 20 s, almost all of it in the Docker job (71 to 91 s). The earlier "trending down" reading was wrong; the variation looks like noise, and I have not measured what drives it | see section 3 |
+| Sixth run (hardening, commit `e3775c9`) | All 5 passed; about **79 s** wall-clock; Docker 74 s, backend tests 25 s, C# build plus tests 20 s, TS typecheck 21 s, frontend 10 s. Node tests: **205 of 205 passed**, which includes the Linux-only real-process shutdown test that was skipped on the Windows development machine, so that test is now confirmed on a Linux runner. C# tests: 19 passed. Only the 2 old lint annotations. No Dependabot pull requests yet (it runs on its own weekly schedule) | `gh run list` |
+| Runs measured | **6**. Wall-clock 88 s, 86 s, 80 s, 72 s, 92 s, 79 s. That is a spread of about 20 s, almost all of it in the Docker job (71 to 91 s). The earlier "trending down" reading was wrong; the variation looks like noise, and I have not measured what drives it | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -137,8 +145,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 ### Architecture facts
 - **17** REST routes in the Node API (4 of them auth routes, 1 the library route the export uses), **2** in the C# service.
 - **3 languages:** JavaScript (API and UI), C# (export service), TypeScript (report CLI).
-- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 have passed on GitHub on every run (see the CI table above), including the C# test step (19 tests).
-- Verified locally: lint has 0 errors and 2 warnings; `tsc --noEmit` is clean; `dotnet build` has 0 errors.
+- **5 CI jobs** run on every push: backend tests, frontend lint, tests and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 have passed on GitHub on every run (see the CI table above), including the C# test step (19 tests).
+- Verified locally: frontend lint has 0 warnings (was 2) and 0 errors; `tsc --noEmit` is clean; `dotnet build` has 0 errors; `npm audit` reports 0 vulnerabilities in the backend, frontend and ts-report, and `dotnet list package --vulnerable` finds none.
 
 ---
 
@@ -183,8 +191,9 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 21. **Fixed (2026-10-12):** the API ignored SIGTERM, so Docker force-killed it after 3,673 ms (exit 137) without closing the database. It now shuts down cleanly in 724 ms with exit 0 (details in the improvement log). I did not add `init: true` to compose, because the process now handles the signal itself.
 22. **Fixed (2026-10-12):** the API sent `X-Powered-By: Express` (now removed by helmet, which also adds its standard headers) and nginx had no security headers, no compression and no caching (all added; see the improvement log). Malformed JSON already gets a JSON error from the blocker fixes. **Still to do at deploy time:** HSTS (`Strict-Transport-Security`) belongs on the HTTPS layer, so it goes in the Caddy config.
 23. **Fixed (2026-10-12):** log rotation, memory ceilings, `no-new-privileges`, and base images pinned by digest, with Dependabot to propose updates. Watch for container OOM kills after launch (`docker inspect` shows `OOMKilled`), because the ceilings are sized from idle usage.
-24. **Pre-deployment audit, polish (found 2026-10-12):** the browser tab title is still `frontend`, unknown URLs render a blank page (no catch-all route), there is no React error boundary, and `README.md` is 11 lines and out of date (nothing on Docker, accounts, tests, CI or architecture).
-25. **Pre-deployment audit, needed before sharing publicly (found 2026-10-12):** no privacy note or terms page, no way to delete an account, no password reset or email verification, and IGDB's terms are unconfirmed. Backups are not set up yet either (a script and a schedule are part of the deploy work).
+24. **Fixed (2026-10-12):** the tab title was `frontend`, unknown URLs rendered a blank page, there was no React error boundary, and the README was 11 lines and out of date (with a broken setup step). All fixed; details are in the improvement log. I also removed 4 unused template files and cleared the 2 old lint warnings.
+25. **Partly addressed (2026-10-12):** the README is now accurate. Still open before sharing publicly: a privacy note, account deletion, password reset and email verification, backups, and confirming IGDB's terms.
+26. **Found while adding frontend tests (2026-10-12), fixed:** `npm audit` in `frontend/` reported 5 high-severity advisories that were already in the committed lockfile, including `react-router`, a runtime dependency. I had audited the backend after earlier work but never re-audited the frontend. Fixed with `npm audit fix`. Lesson: audit every package, and consider an audit step in CI (see the pending list).
 
 ---
 
@@ -202,9 +211,10 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Rate limiter is per process | It keeps counts in memory, so with several API instances each would count separately | Move the counter to a shared store (for example Redis) when running multiple instances |
 | Your existing local library | Pre-accounts lists have no owner, so they are invisible until claimed. Backed up at `backend/backlog.pre-auth.bak` | Create your account, then run `cd backend && npm run claim-legacy -- you@example.com` |
 | CSRF protection | Relies on `SameSite=Lax` cookies, a strict CORS origin allowlist and JSON-only bodies; no CSRF tokens | Get a security review before relying on this publicly |
-| Frontend automated tests | The account UI was verified by driving a browser by hand, not by automated UI tests | Add component or end-to-end tests |
-| Real-process shutdown test in CI | It runs only on Linux, so it was skipped on this Windows machine. The same behaviour was verified on the real container (exit 0 in 724 ms) | The next CI run on GitHub should show it passing; if it fails, fix it |
+| Frontend test depth | 13 frontend tests cover routing, the not-found page, page titles, the IGDB attribution and the error boundary. The sign-in flows, dashboard, status changes and search were checked by hand in a browser, not by automated tests | Add tests for those flows (Testing Library with a mocked API) |
 | Content-Security-Policy upkeep | The policy was verified against the current pages only. It is strict (`script-src 'self'`, `style-src 'self'`, images only from this site and `images.igdb.com`), so a future inline script or style, or a new image host, will be blocked | Update `frontend/security-headers.conf` when the app starts using something new, and check the browser console after each frontend change |
+| README screenshots | The README has no screenshots, because screenshots would not render in the tools I had here | Take a few yourself (dashboard, a list, the not-found page) and add them near the top of `README.md` |
+| Dependency audit in CI | CI does not run `npm audit`, which is why 5 high-severity frontend advisories sat unnoticed until I audited by hand | Add an audit step (for example `npm audit --audit-level=high`), accepting that new advisories can turn CI red. Dependabot's security updates also help |
 | Tuning of the new limits | 10 new guests per hour per IP, 120 writes per minute per IP, 50 lists, 2,000 games and the field lengths are my estimates | Watch for legitimate users hitting 429 or 409 after launch and adjust in `limits.js` and `writeLimiters.js` |
 | IGDB limits and tuning | The 4 requests per second and 8 open requests limits come from secondary summaries, not IGDB's own page. The 60 requests per minute per IP and 300 ms spacing are my estimates, not tuned from real traffic | Confirm IGDB's limits in its docs, then review the numbers against real usage after launch (watch for 429s in the logs) |
 | IGDB terms confirmed in writing | I could only read secondary summaries, not api-docs.igdb.com. Commercial-use, caching and attribution rules are unverified | Read the official docs, and email or ask IGDB support for confirmation if the site might ever carry ads or payments |
@@ -403,3 +413,18 @@ The API is the only thing that touches the data and the only thing that understa
 - *Why is your CSP so strict, and how do you know it does not break the app?* The built page has no inline scripts or styles, so a strict policy is possible. I loaded the app through nginx in a browser, checked the console for violations, and used deliberate negative controls (an off-site image and an inline script) to prove the policy blocks things.
 - *Pinning by digest means you stop getting security patches. How do you handle that?* Dependabot opens weekly pull requests that bump the digest, and CI tests each one before it merges.
 - *What would you add next?* HSTS at the HTTPS layer, a Content-Security-Policy report endpoint to learn about violations in production, and dependency scanning in CI.
+
+### 5.11 Frontend polish and why each piece matters
+
+**A not-found route.** React Router only renders a route that matches. With no `path="*"` route, an unknown URL matches nothing, so the page was just the header and footer. A catch-all route gives users a way back, and the same page is reused when the API says a list does not exist (`List not found`), so a deleted list or a stale bookmark does not show a raw error line.
+
+**An error boundary.** React unmounts the whole tree when a component throws while rendering, so one bug would blank the screen. An error boundary is the only way to catch render errors (it has to be a class component because the hooks API has no equivalent). It sits around the routes, so the header and footer survive. A `resetKey` (the URL) lets it recover when the user navigates away, using `getDerivedStateFromProps`, which is the recommended pattern; my first version used `setState` in `componentDidUpdate`, which the linter flagged because it forces a second render. Boundaries do not catch errors in event handlers or async code, so those are still handled where they happen (for example the API errors shown in each page).
+
+**Page titles.** The browser tab, history list and bookmarks use `document.title`. A small `usePageTitle` hook sets it per page. It matters for usability and for how the link looks when shared.
+
+**How the frontend tests work.** Each test renders the real `App` inside a `MemoryRouter` (a router that keeps the URL in memory, so no browser is needed) with `fetch` replaced by a fake API that returns canned JSON. That tests routing, titles and error handling without a server. The error-path test returns a list whose `games` field is `null`, which makes the real list page throw while rendering, so it checks the whole chain: the error happens, the boundary catches it, and the header survives.
+
+**Likely questions**
+- *Why a class component in a hooks codebase?* Error boundaries have no hooks equivalent yet.
+- *What does an error boundary not catch?* Errors in event handlers, in async code such as a failed `fetch`, and during server rendering.
+- *How do you test components that call an API?* Mock `fetch` at the boundary, render with a memory router, and assert on what the user sees.

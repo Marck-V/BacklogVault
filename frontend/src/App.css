@@ -925,3 +925,25 @@ button:disabled {
 .site-footer a {
   color: var(--blue);
 }
+
+/* Not-found and error pages */
+
+.state-page {
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.state-page h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.8rem;
+}
+
+.state-page p {
+  margin: 0 0 1.25rem;
+  color: var(--text-muted);
+}
+
+.state-page-link {
+  color: var(--blue);
+  font-weight: 600;
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getGameDetails, updateGameEntry } from './api'
-import { STATUSES } from './StatusBubble'
+import { STATUSES } from './statuses'
 
 function formatDate(unixSeconds) {
   if (!unixSeconds) return 'Unknown'

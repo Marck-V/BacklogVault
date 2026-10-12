@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-
-export const STATUSES = ['Backlog', 'Playing', 'Completed', 'Dropped']
+import { STATUSES } from './statuses'
 
 const STATUS_CLASS = {
   Backlog: 'status-backlog',
