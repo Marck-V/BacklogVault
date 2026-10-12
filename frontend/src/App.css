@@ -924,16 +924,20 @@ button:disabled {
   list-style: none;
   margin: 0.6rem 0 0.4rem;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  text-align: left;
 }
 
+.left-out-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+/* One row per game: title, hours, then the checkbox in its own fixed column so they all line up. */
 .left-out-list label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.6rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 1.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
   cursor: pointer;
 }
 
@@ -944,7 +948,17 @@ button:disabled {
 
 .left-out-hours {
   color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
 }
+
+.left-out-list input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  justify-self: center;
+}
+
 
 .left-out-hint {
   display: block;
@@ -1097,5 +1111,20 @@ button:disabled {
   .game-row-actions {
     flex: 1 1 100%;
     justify-content: flex-end;
+  }
+  .left-out-list label {
+    grid-template-columns: minmax(0, 1fr) 1.5rem;
+  }
+
+  .left-out-hours {
+    grid-column: 1;
+    grid-row: 2;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .left-out-list input[type='checkbox'] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 }
