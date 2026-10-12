@@ -11,7 +11,6 @@ RUN dotnet publish -c Release -o /out --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /out .
-ENV DB_PATH=/data/backlog.db \
-    EXPORT_URL=http://0.0.0.0:5000
+ENV EXPORT_URL=http://0.0.0.0:5000
 EXPOSE 5000
 ENTRYPOINT ["dotnet", "export-service.dll"]

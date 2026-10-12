@@ -73,6 +73,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet build --configuration Release
+      - name: Run C# tests
+        run: dotnet test export-service.tests
+        working-directory: .
 
   docker-stack:
     name: Docker stack smoke test

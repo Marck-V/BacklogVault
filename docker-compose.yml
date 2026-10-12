@@ -14,10 +14,9 @@ services:
 
   export:
     build: ./export-service
-    # Match the node user's uid in the api image so both containers can use the SQLite -wal/-shm files in the shared volume
-    user: "1000:1000"
-    volumes:
-      - backlog-data:/data
+    environment:
+      # The export service asks the API for a user's library instead of opening the database file itself
+      API_BASE_URL: http://api:4000
     depends_on:
       api:
         condition: service_healthy
