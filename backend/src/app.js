@@ -10,6 +10,7 @@ import { createWriteLimiter } from "./writeLimiters.js";
 import { attachUser } from "./auth.js";
 import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
+import importRouter from "./importRoutes.js";
 import db from "./db.js";
 
 const app = express();
@@ -188,6 +189,7 @@ app.get("/api/library", (req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/lists", createWriteLimiter(), listsRouter);
+app.use("/api/import", importRouter);
 
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 

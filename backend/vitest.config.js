@@ -10,6 +10,7 @@ export default defineConfig({
       IGDB_MIN_INTERVAL_MS: "0",
       WRITE_RATE_LIMIT: "100000",
       GUEST_RATE_LIMIT: "100000",
+      IMPORT_RATE_LIMIT: "100000",
     },
     include: ["test/**/*.test.js"],
   },

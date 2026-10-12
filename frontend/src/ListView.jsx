@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getList, getLists, removeGameFromList, updateGameEntry } from './api'
 import GameSearch from './GameSearch'
+import SteamImport from './SteamImport'
 import GameDetailsModal from './GameDetailsModal'
 import StatusBubble from './StatusBubble'
 import { STATUSES } from './statuses'
@@ -167,6 +168,8 @@ export default function ListView() {
 
       <h2>Add games</h2>
       <GameSearch lists={allLists} defaultListId={Number(id)} onAdded={refresh} />
+
+      <SteamImport listId={id} onImported={refresh} />
 
       {activeGame && (
         <GameDetailsModal

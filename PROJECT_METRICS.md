@@ -51,6 +51,11 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 | 2026-10-12 | Frontend lint warnings and dead files | **2** warnings (a constant exported from a component file, an effect missing a dependency); **4** unused Vite template files | **0** warnings and **0** unused template files | `cd frontend && npm run lint` |
 | 2026-10-12 | Frontend dependency vulnerabilities | **5 high-severity advisories** (react-router, postcss, nanoid, source-map-js), present in the lockfile I had already committed because the frontend had never been re-audited | **0** after `npm audit fix` (only compatible updates; react-router 7.18.4); lint, build and tests still pass | `cd frontend && npm audit` |
 | 2026-10-12 | README and setup docs | an 11-line README whose setup step pointed at a `backend/.env.example` that did not exist; a leftover Vite template README in `frontend/` | a full README (features, architecture, run with and without Docker, configuration table, tests, security notes, limitations) and a real `backend/.env.example` | `README.md` |
+| 2026-10-12 | CI smoke test reliability | the Docker smoke test depended on a race: with no health check on the web container, `up --wait` returned while nginx was still starting, and it failed once in 7 runs (**1 of 7**) with a connection reset on its first request | the web container has a health check (`up --wait` now waits for it, so `docker compose ps` shows `healthy`) and the smoke script waits up to 30 s for nginx and the export service; **3 of 3** runs passed (1 run plus 2 re-runs of the same commit). A small sample, so I list it as watch-for-recurrence | CI logs; `docker inspect gamebacklogtracker-web-1 --format '{{.State.Health.Status}}'` |
+| 2026-10-12 | Getting a Steam library into a list | the only way was to search for each game, click it and pick a list, one game at a time | paste a profile link, a 17-digit ID or a custom name and the whole library is added as Backlog with hours played, in one request; unmatched items are reported, not dropped, and re-running is safe | **99 backend and 14 frontend tests**, and the real error paths checked in a browser against the real Steam API. **First real import (2026-10-12): 239 games added to one list in a single action**, where the alternative was 239 separate search-and-add rounds. Of those, 202 have hours played from Steam and 37 have none (owned but unplayed); all 239 have an IGDB cover; 0 duplicates; 0 errors and 0 mentions of the key in the server log; the API container held 88.7 MiB afterwards (ceiling 384 MiB). Still to record: how many Steam items were owned and unmatched, and the duration (see section 3) |
+| 2026-10-12 | Matching Steam games to IGDB correctly | not applicable (new) | every lookup filters on IGDB's Steam source (`external_game_source = 1`). I found this by probing the real IGDB: without the filter, the same ID matched other stores' games (app 730 also matched an unrelated game from another source), and the older `category = 1` filter I would have used from memory returns **nothing** now | live probe of the `external_games` endpoint; a test asserts every query carries the filter |
+| 2026-10-12 | Steam API key exposure | not applicable (new) | the key stays on the server: **0** occurrences in the server log, in any API response, or in the browser's network traffic (the browser never calls Steam). the failure modes are tested (Steam HTTP errors, a timeout, and a failed network call whose own error message contains the URL, and therefore the key) | checks in the browser run plus `steamClient.test.js` and `steamImport.test.js` |
+| 2026-10-12 | Safety limits on the import | not applicable (new) | 5 imports per hour per IP; library capped at 20,000 apps; the list's 2,000-game cap respected with the most-played games kept first; one database transaction, so an IGDB failure part-way leaves **0** games half-imported; every call to Steam has a 10-second timeout | tests for each limit |
 
 **Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
 
@@ -61,29 +66,29 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **204 Node tests passing + 1 that runs only on Linux and in CI, 19 C# tests and 13 frontend tests; 0 failing** (Node: 17 files) | `cd backend && npm test`, `dotnet test export-service.tests`, `cd frontend && npm test` |
+| Automated tests | **303 Node tests passing + 1 that runs only on Linux and in CI, 19 C# tests and 27 frontend tests; 0 failing** (Node: 19 files) | `cd backend && npm test`, `dotnet test export-service.tests`, `cd frontend && npm test` |
 | Tests before this work | **0** | (none existed) |
-| Line coverage (Node) | **95.2%** (359/377) | `cd backend && npm run test:coverage` |
-| Statement coverage | 94.5% | same |
-| Branch coverage | 91.4% | same |
-| Function coverage | 94.3% | same |
-| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) to 95.8% (193 tests, after the pre-deployment fixes) to 95.2% (205 tests, after the hardening items; the real-process shutdown test is skipped locally on Windows, so `server.js` is not counted as covered) | earlier measurements |
+| Line coverage (Node) | **96.2%** (482/501) | `cd backend && npm run test:coverage` |
+| Statement coverage | 95.4% | same |
+| Branch coverage | 91.7% | same |
+| Function coverage | 95.6% | same |
+| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) to 95.8% (193 tests, after the pre-deployment fixes) to 95.2% (205 tests, after the hardening items; then 96.2% with 304 tests after the Steam import; the real-process shutdown test is skipped locally on Windows, so `server.js` is not counted as covered) | earlier measurements |
 | Suite runtime | about 2.2 s (0.5 s before accounts existed; password hashing is the slowest part) | "Duration" line in `npm test` output |
 | External network calls during tests | **0** (IGDB and Twitch are mocked or stubbed) | tests pass offline |
 | `npm audit` | **0 vulnerabilities** | `cd backend && npm audit` |
 
-Tests per file (Node): `limits.test.js` 40, `auth.test.js` 38, `lists.test.js` 32, `config.test.js` 12, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `shutdown.test.js` 7 (6 unit tests plus 1 real-process test that runs only on Linux and in CI), `errorHandling.test.js` 6, `igdbClient.test.js` 6, `library.test.js` 6, `stats.test.js` 6, `headers.test.js` 5, `igdbQuery.test.js` 4, `abuseLimits.test.js` 3, `proxyChain.test.js` 3. C#: `CsvExportTests.cs` 19.
+Tests per file (Node): `steamImport.test.js` 51, `steamClient.test.js` 48, `limits.test.js` 40, `auth.test.js` 38, `lists.test.js` 32, `config.test.js` 12, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `shutdown.test.js` 7 (6 unit tests plus 1 real-process test that runs only on Linux and in CI), `errorHandling.test.js` 6, `igdbClient.test.js` 6, `library.test.js` 6, `stats.test.js` 6, `headers.test.js` 5, `igdbQuery.test.js` 4, `abuseLimits.test.js` 3, `proxyChain.test.js` 3. C#: `CsvExportTests.cs` 19.
 
 Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the new code has a few defensive branches (a race on duplicate email, the migration branch for old databases) that tests do not trigger. Say that if asked; do not hide it.
 
 ### Size of the codebase (non-blank lines, excludes dependencies, build output, lockfiles)
 | Area | Lines |
 |---|---|
-| Backend source (Node/Express, JavaScript) | 808 |
+| Backend source (Node/Express, JavaScript) | 1049 |
 | Backend scripts | 13 |
-| Backend tests | 1496 (about 1.9 lines of test per line of source) |
-| Frontend JS/JSX (React) | 1189, of which 159 are tests (1030 without tests) |
-| Frontend CSS | 911 |
+| Backend tests | 2002 (about 1.9 lines of test per line of source) |
+| Frontend JS/JSX (React) | 1470, of which 328 are tests (1142 without tests) |
+| Frontend CSS | 952 |
 | C# export service | 94 (Program.cs 55, CsvExport.cs 39) |
 | C# tests | 74 |
 | TypeScript report CLI | 99 |
@@ -125,7 +130,9 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Fourth run (export service as an API client, commit `2453adf`) | All 5 passed; about **72 s** wall-clock; Docker 71 s, C# build plus tests 25 s, TS typecheck 20 s, frontend 19 s, backend tests 15 s. The new C# test step ran on GitHub: **19 passed, 0 failed**. Node tests: 129 passed. Only the 2 old lint annotations | `gh run list` |
 | Fifth run (pre-deployment fixes, commit `a6f331f`) | All 5 passed; about **92 s** wall-clock; Docker 91 s, C# build plus tests 20 s, backend tests 19 s, TS typecheck 18 s, frontend 9 s. Node tests: **193 passed**; C# tests: **19 passed**. Only the 2 old lint annotations | `gh run list` |
 | Sixth run (hardening, commit `e3775c9`) | All 5 passed; about **79 s** wall-clock; Docker 74 s, backend tests 25 s, C# build plus tests 20 s, TS typecheck 21 s, frontend 10 s. Node tests: **205 of 205 passed**, which includes the Linux-only real-process shutdown test that was skipped on the Windows development machine, so that test is now confirmed on a Linux runner. C# tests: 19 passed. Only the 2 old lint annotations. No Dependabot pull requests yet (it runs on its own weekly schedule) | `gh run list` |
-| Runs measured | **6**. Wall-clock 88 s, 86 s, 80 s, 72 s, 92 s, 79 s. That is a spread of about 20 s, almost all of it in the Docker job (71 to 91 s). The earlier "trending down" reading was wrong; the variation looks like noise, and I have not measured what drives it | see section 3 |
+| Seventh run (frontend polish, commit `d6aeab3`) | **Failed.** The Docker smoke test's very first request got `Connection reset by peer` (job took 113 s). The other 4 jobs passed, including the frontend job running its new 13 tests. The container logs showed nginx was still running its startup scripts: the web container had no health check, so `docker compose up --wait` treated "running" as "ready". A real race that had passed six times by luck | `gh run view 38277031711 --log-failed` |
+| Eighth run (race fix, commit `e138c70`) | All 5 passed; about **80 s** wall-clock; Docker 80 s. Backend: **205 of 205** tests; frontend: **13 of 13**; C#: 19. No annotations at all, since the 2 old lint warnings are gone. I then re-ran the same commit **twice more** and both passed | `gh run list` |
+| Runs measured | **8 distinct runs: 7 passed, 1 failed** (the race above, now fixed), plus 2 passing re-runs of the fix. Wall-clock for the passing runs: 88 s, 86 s, 80 s, 72 s, 92 s, 79 s, 80 s. A spread of about 20 s, almost all in the Docker job. The earlier "trending down" reading was wrong; the variation looks like noise, and I have not measured what drives it | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -143,7 +150,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Layout | Header has no horizontal overflow at 1280 px and 375 px wide | measured in the browser; I could not capture screenshots in this session, so I have not looked at it visually |
 
 ### Architecture facts
-- **17** REST routes in the Node API (4 of them auth routes, 1 the library route the export uses), **2** in the C# service.
+- **19** REST routes in the Node API (4 auth routes, 1 library route for the export, 2 for the Steam import), **2** in the C# service.
 - **3 languages:** JavaScript (API and UI), C# (export service), TypeScript (report CLI).
 - **5 CI jobs** run on every push: backend tests, frontend lint, tests and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 have passed on GitHub on every run (see the CI table above), including the C# test step (19 tests).
 - Verified locally: frontend lint has 0 warnings (was 2) and 0 errors; `tsc --noEmit` is clean; `dotnet build` has 0 errors; `npm audit` reports 0 vulnerabilities in the backend, frontend and ts-report, and `dotnet list package --vulnerable` finds none.
@@ -194,6 +201,10 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 24. **Fixed (2026-10-12):** the tab title was `frontend`, unknown URLs rendered a blank page, there was no React error boundary, and the README was 11 lines and out of date (with a broken setup step). All fixed; details are in the improvement log. I also removed 4 unused template files and cleared the 2 old lint warnings.
 25. **Partly addressed (2026-10-12):** the README is now accurate. Still open before sharing publicly: a privacy note, account deletion, password reset and email verification, backups, and confirming IGDB's terms.
 26. **Found while adding frontend tests (2026-10-12), fixed:** `npm audit` in `frontend/` reported 5 high-severity advisories that were already in the committed lockfile, including `react-router`, a runtime dependency. I had audited the backend after earlier work but never re-audited the frontend. Fixed with `npm audit fix`. Lesson: audit every package, and consider an audit step in CI (see the pending list).
+27. **Found by a CI failure (2026-10-12), fixed:** the Docker smoke test failed once with `Connection reset by peer` on its first request. Cause: the web container had no health check, so `docker compose up --wait` returned while nginx was still running its startup scripts (the CI container logs showed exactly that). It had passed six times before only because nginx usually wins the race. I could not reproduce it locally (0 failures in 8 attempts on this fast machine), so the diagnosis rests on the CI log and on how `--wait` works. Fixed two ways: a real health check on the web container, and a wait loop in the smoke test (up to 30 s) for nginx and the C# service, which has no health check of its own. The fixed commit passed 3 times in a row (one run plus 2 re-runs). Three passes is encouraging, not proof, so watch for a recurrence.
+28. **Found by a test while building the Steam import (2026-10-12), fixed:** the profile-link parser accepted trailing junk, so `.../id/bad name` was read as the profile `bad` and could import the wrong person's library. The profile segment must now end at a path boundary, and the case is covered by a test. A second test of mine was flawed (Node's `AbortSignal.timeout` ignores fake timers); I rewrote it to control the signal.
+29. **Open compliance question (2026-10-12):** Steam's Web API terms say data should be retrieved only as requested by the Steam user it belongs to, and that you must post a privacy policy covering what you store. The import currently trusts whatever profile is typed in. Mitigations so far: it only reads libraries a user has made public, the page says to import your own library, and only game names and hours are stored. **Not done:** verifying ownership with Steam's OpenID sign-in, and the privacy policy. Both are needed before a public launch. I could only read secondary summaries of the terms, not the page itself.
+30. **Partly known (2026-10-12):** one real library imported 239 games with covers on all of them and no duplicates or errors. Still unknown: what share of the owned Steam items matched (the number of items owned and left unmatched is in the import summary, which I have not seen) and how long the import took. The code paces IGDB at 300 ms per batch of 200, so a library this size needs about two IGDB calls, but the real duration is unmeasured.
 
 ---
 
@@ -213,6 +224,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | CSRF protection | Relies on `SameSite=Lax` cookies, a strict CORS origin allowlist and JSON-only bodies; no CSRF tokens | Get a security review before relying on this publicly |
 | Frontend test depth | 13 frontend tests cover routing, the not-found page, page titles, the IGDB attribution and the error boundary. The sign-in flows, dashboard, status changes and search were checked by hand in a browser, not by automated tests | Add tests for those flows (Testing Library with a mocked API) |
 | Content-Security-Policy upkeep | The policy was verified against the current pages only. It is strict (`script-src 'self'`, `style-src 'self'`, images only from this site and `images.igdb.com`), so a future inline script or style, or a new image host, will be blocked | Update `frontend/security-headers.conf` when the app starts using something new, and check the browser console after each frontend change |
+| Steam import with a real library: remaining numbers | One real library has been imported (239 games, see the improvement log), but I do not have the count of Steam items owned or left unmatched, nor how long it took, because the server does not record them. The 239 comes from the database, not from the import summary | Read the summary the app showed (owned, matched, unmatched) and add those numbers here. Consider logging counts and duration for each import (with no profile identifier) so future runs can be measured without asking |
+| Steam ownership check and privacy policy | See item 29. Right now anyone can type any public profile | Add Steam OpenID sign-in so the user proves the profile is theirs, and write a privacy policy that says what is stored and where |
 | README screenshots | The README has no screenshots, because screenshots would not render in the tools I had here | Take a few yourself (dashboard, a list, the not-found page) and add them near the top of `README.md` |
 | Dependency audit in CI | CI does not run `npm audit`, which is why 5 high-severity frontend advisories sat unnoticed until I audited by hand | Add an audit step (for example `npm audit --audit-level=high`), accepting that new advisories can turn CI red. Dependabot's security updates also help |
 | Tuning of the new limits | 10 new guests per hour per IP, 120 writes per minute per IP, 50 lists, 2,000 games and the field lengths are my estimates | Watch for legitimate users hitting 429 or 409 after launch and adjust in `limits.js` and `writeLimiters.js` |
@@ -428,3 +441,38 @@ The API is the only thing that touches the data and the only thing that understa
 - *Why a class component in a hooks codebase?* Error boundaries have no hooks equivalent yet.
 - *What does an error boundary not catch?* Errors in event handlers, in async code such as a failed `fetch`, and during server rendering.
 - *How do you test components that call an API?* Mock `fetch` at the boundary, render with a memory router, and assert on what the user sees.
+
+### 5.12 How the Steam import works, and why it is built this way
+
+**The flow**
+```
+paste a profile -> parse it -> (custom name? ask Steam for the ID) -> ask Steam for the owned games
+   -> ask IGDB which games those Steam app IDs are (in batches of 200) -> one transaction adds the new ones to the list
+   -> return a summary: imported, already there, did not fit, could not be matched
+```
+Everything happens on the server. The browser sends only what you typed and your session cookie, and never talks to Steam.
+
+**Matching Steam to IGDB.** Steam identifies a game by an app ID, IGDB by its own ID. IGDB's `external_games` table links them, and it answers with the game's name and cover in the same query, so one lookup per 200 games does the whole job. Two things I only learned by trying the real API: the same ID appears under other stores, so the lookup must filter on the Steam source (ID 1), and the older `category` field no longer returns anything. Games IGDB does not list (soundtracks, tools, demos, betas) cannot be matched, so they are counted and a sample is shown, not silently dropped.
+
+**Why one request instead of a background job.** A library of a thousand games needs one Steam call and about five IGDB calls, spaced 300 ms apart by the site-wide IGDB queue, so it finishes in seconds. A job queue would be more machinery than the problem needs. If libraries took minutes, that decision would change.
+
+**Choices worth explaining**
+- *Everything imports as Backlog.* Steam cannot say whether you finished a game, and guessing would put wrong data in your list. Hours played come from Steam, so you can see which are untouched.
+- *Most played first.* The list holds at most 2,000 games. If a library is bigger, the games you actually play are kept.
+- *One transaction.* The inserts all happen together at the end, after every IGDB call has succeeded, so a failure part-way leaves the list unchanged.
+- *Existing entries are never changed.* If you already track a game, your status, rating and notes survive, which also makes re-running an import safe.
+- *Two Steam apps for one game* (a base game and an edition) merge into one entry with the hours added up.
+
+**Keeping the Steam key secret.** Steam requires the key in the URL, and a failed network call can put the whole URL in its error message. So the Steam client never rethrows or logs the original error, the visitor gets a fixed friendly message, and the server logs only the kind of failure and the HTTP status. The key itself never reaches the browser. Tests check this for HTTP errors, a timeout, and a failed call whose message contains the key.
+
+**Input handling.** The profile box accepts a link, a 17-digit ID or a custom name, and only characters Steam allows get through to a URL. A bug I found with a test: a link with trailing junk was being read as a shorter valid name. Only integer app IDs from Steam's own answer are put into the IGDB query, never text from the user or from Steam, so there is nothing to inject.
+
+**What I would say honestly in an interview**
+- It is feature-flagged: without a key the panel does not appear and the API answers 503.
+- Steam's terms say data should be fetched as requested by the user it belongs to, and require a privacy policy. Proper ownership verification is Steam's OpenID sign-in (you are sent to Steam, which tells us your ID), which I have not built yet. Today it trusts the typed profile, reads only public libraries, and stores only names and hours.
+- I tested the error paths against the real Steam API (a missing profile, a library that is not visible) and the success path with fakes. Matching quality on a real library is not measured yet.
+
+**Likely questions**
+- *Why not use Steam's OpenID?* It is the right answer for ownership and is the next step; it needs a redirect flow, a callback and a public return address, which is a feature in itself.
+- *What happens if IGDB or Steam is down?* Clear messages (502), nothing is changed, and you can retry.
+- *How do you stop one person burning the API quota?* 5 imports per hour per IP, a 20,000-app cap, the shared IGDB rate queue, and the usual write limits.
