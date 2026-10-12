@@ -30,7 +30,8 @@ describe("GET /api/stats/currently-playing", () => {
 
     const res = await client.get("/api/stats/currently-playing");
     expect(res.status).toBe(200);
-    expect(res.body.map((g) => g.igdb_id)).toEqual([1]);
+    expect(res.body.source).toBe("manual");
+    expect(res.body.games.map((g) => g.igdb_id)).toEqual([1]);
     expect(idle.status).toBe("Backlog");
   });
 });

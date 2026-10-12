@@ -14,7 +14,7 @@ export const hoursFromMinutes = (minutes) => (minutes > 0 ? Math.round(minutes /
 export const coverUrlFor = (igdbUrl) => (igdbUrl ? `https:${igdbUrl.replace("t_thumb", "t_cover_big")}` : null);
 
 // Maps Steam app ids to IGDB games, a batch at a time. The ids are integers from Steam's response, never user text.
-async function matchOnIgdb(appids) {
+export async function matchOnIgdb(appids) {
   const matches = new Map();
   for (let i = 0; i < appids.length; i += IDS_PER_QUERY) {
     const batch = appids.slice(i, i + IDS_PER_QUERY);

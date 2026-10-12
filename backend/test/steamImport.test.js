@@ -140,6 +140,12 @@ describe("a successful import", () => {
     expect(byName["Hades"].cover_url).toBeNull();
   });
 
+  it("remembers the Steam account on the user, for the recently played widget", async () => {
+    expect(db.prepare("SELECT steam_id FROM users").get().steam_id).toBeNull();
+    await importIt({ listId: list.id, steam: ID });
+    expect(db.prepare("SELECT steam_id FROM users").get().steam_id).toBe(ID);
+  });
+
   it("shows up in the list endpoint like any other game", async () => {
     await importIt({ listId: list.id, steam: ID });
     const res = await client.get(`/api/lists/${list.id}`);

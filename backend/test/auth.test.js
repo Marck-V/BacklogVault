@@ -24,7 +24,7 @@ describe("guest sessions", () => {
     const playing = await client.get("/api/stats/currently-playing");
     expect(me.body).toEqual({ user: null });
     expect(lists.body).toEqual([]);
-    expect(playing.body).toEqual([]);
+    expect(playing.body).toEqual({ source: "manual", games: [] });
     expect(sessionCookie(me)).toBeUndefined();
     expect(userCount()).toBe(0);
   });
@@ -110,8 +110,8 @@ describe("data isolation between users", () => {
   it("scopes dashboard stats to the signed-in user", async () => {
     const mine = await alice.get("/api/stats/currently-playing");
     const theirs = await bob.get("/api/stats/currently-playing");
-    expect(mine.body.map((g) => g.igdb_id)).toEqual([1]);
-    expect(theirs.body).toEqual([]);
+    expect(mine.body.games.map((g) => g.igdb_id)).toEqual([1]);
+    expect(theirs.body.games).toEqual([]);
 
     const bobTimes = await bob.get("/api/stats/time-to-beat");
     expect(bobTimes.body.game_count).toBe(0);
