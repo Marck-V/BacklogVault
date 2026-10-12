@@ -63,6 +63,14 @@ export function getTimeToBeatStats() {
   return request('/api/stats/time-to-beat')
 }
 
+export function setEstimateIncluded(igdbId, included) {
+  return request(`/api/stats/time-to-beat/includes/${igdbId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ included }),
+  })
+}
+
 export function getCurrentlyPlaying() {
   return request('/api/stats/currently-playing')
 }

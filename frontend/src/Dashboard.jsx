@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getTimeToBeatStats, getCurrentlyPlaying } from './api'
+import { getTimeToBeatStats, getCurrentlyPlaying, setEstimateIncluded } from './api'
 
 function formatHours(seconds) {
   if (seconds == null) return '—'
@@ -7,11 +7,18 @@ function formatHours(seconds) {
   return `${Math.round(seconds / 3600).toLocaleString()} hours`
 }
 
+function formatHoursPlayed(hours) {
+  if (hours == null) return '—'
+  return `${Math.round(hours).toLocaleString()} hours`
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [playing, setPlaying] = useState([])
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showLeftOut, setShowLeftOut] = useState(false)
+  const [toggleError, setToggleError] = useState(null)
 
   useEffect(() => {
     Promise.all([getTimeToBeatStats(), getCurrentlyPlaying()])
@@ -23,8 +30,19 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
+  async function toggleIncluded(game) {
+    setToggleError(null)
+    try {
+      await setEstimateIncluded(game.igdb_id, !game.included)
+      setStats(await getTimeToBeatStats())
+    } catch (err) {
+      setToggleError(err.message)
+    }
+  }
+
   if (loading) return <p>Loading stats...</p>
   if (error) return <p className="error">{error}</p>
+  const overLimit = stats?.over_limit_games ?? []
   if (!stats || (stats.game_count === 0 && stats.completed_count === 0)) return null
 
   return (
@@ -46,10 +64,50 @@ export default function Dashboard() {
           <span className="stat-value">{stats.completed_count}</span>
           <span className="stat-label">Games completed</span>
         </div>
+        <div className="stat-card">
+          <span className="stat-value">{formatHoursPlayed(stats.total_hours_played)}</span>
+          <span className="stat-label">Total hours played</span>
+        </div>
       </div>
 
       {stats.igdb_unavailable && (
         <p className="dashboard-note">Time estimates are temporarily unavailable. Everything else is up to date.</p>
+      )}
+
+      {(overLimit.length > 0 || stats.games_without_estimate > 0) && (
+        <div className="dashboard-note">
+          Time remaining leaves out{' '}
+          {overLimit.length > 0 ? (
+            <button
+              type="button"
+              className="link-button"
+              aria-expanded={showLeftOut}
+              onClick={() => setShowLeftOut((open) => !open)}
+            >
+              {stats.games_left_out} game{stats.games_left_out === 1 ? '' : 's'} with unrealistic estimates
+            </button>
+          ) : (
+            <>0 games with unrealistic estimates</>
+          )}{' '}
+          (endless or multiplayer games) and {stats.games_without_estimate ?? 0} with no estimate on IGDB.
+          {showLeftOut && (
+            <ul className="left-out-list">
+              {overLimit.map((game) => (
+                <li key={game.igdb_id}>
+                  <label>
+                    <input type="checkbox" checked={game.included} onChange={() => toggleIncluded(game)} />
+                    <span className="left-out-name">{game.name}</span>
+                    <span className="left-out-hours">
+                      {formatHours(game.main_story_seconds)} main · {formatHours(game.completionist_seconds)} 100%
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {showLeftOut && <span className="left-out-hint">Tick a game to count it in the time remaining.</span>}
+          {toggleError && <span className="error"> {toggleError}</span>}
+        </div>
       )}
 
       {playing.length > 0 && (
