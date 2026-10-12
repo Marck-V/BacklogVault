@@ -55,6 +55,14 @@ export function updateGameEntry(listId, gameId, { status, rating, hoursPlayed, n
   })
 }
 
+export function bulkUpdateStatus(listId, ids, status) {
+  return request(`/api/lists/${listId}/games`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, status }),
+  })
+}
+
 export function getGameDetails(igdbId) {
   return request(`/api/games/${igdbId}/details`)
 }

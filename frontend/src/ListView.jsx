@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { getList, getLists, removeGameFromList, updateGameEntry } from './api'
+import { bulkUpdateStatus, getList, getLists, removeGameFromList, updateGameEntry } from './api'
 import GameSearch from './GameSearch'
 import SteamImport from './SteamImport'
 import GameDetailsModal from './GameDetailsModal'
 import StatusBubble from './StatusBubble'
+import BulkStatusBar from './BulkStatusBar'
 import { STATUSES } from './statuses'
 import ConfirmDialog from './ConfirmDialog'
 import NotFound from './NotFound'
@@ -20,6 +21,12 @@ export default function ListView() {
   const [error, setError] = useState(null)
   const [activeGame, setActiveGame] = useState(null)
   const [pendingRemove, setPendingRemove] = useState(null)
+  // Select mode: pick several games and change their status in one go.
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [lastPickedId, setLastPickedId] = useState(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMessage, setBulkMessage] = useState(null)
   // Tab, sort and view live in the address, so a refresh, a shared link and the back button all keep them.
   const [searchParams, setSearchParams] = useSearchParams()
   const statusParam = searchParams.get('status')
@@ -90,6 +97,67 @@ export default function ListView() {
 
   const showPlaytime = sortKey.startsWith('playtime')
 
+  // Only games you can see count as selected, so the number on the bar always matches what is on the screen.
+  const selectedGames = visibleGames.filter((game) => selectedIds.has(game.id))
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+    setLastPickedId(null)
+  }
+
+  function toggleSelecting() {
+    setSelecting((on) => !on)
+    clearSelection()
+    setBulkMessage(null)
+  }
+
+  // Click picks or unpicks one game. Shift-click picks or unpicks everything between this game and the last one
+  // clicked, in the order shown.
+  function handlePick(game, shiftKey) {
+    setBulkMessage(null)
+    setSelectedIds((previous) => {
+      const next = new Set(previous)
+      const from = shiftKey && lastPickedId != null ? visibleGames.findIndex((g) => g.id === lastPickedId) : -1
+      const to = visibleGames.findIndex((g) => g.id === game.id)
+      if (from !== -1 && to !== -1) {
+        const adding = !previous.has(game.id)
+        for (const g of visibleGames.slice(Math.min(from, to), Math.max(from, to) + 1)) {
+          if (adding) next.add(g.id)
+          else next.delete(g.id)
+        }
+      } else if (next.has(game.id)) {
+        next.delete(game.id)
+      } else {
+        next.add(game.id)
+      }
+      return next
+    })
+    setLastPickedId(game.id)
+  }
+
+  function openOrPick(game, event) {
+    if (selecting) handlePick(game, event.shiftKey)
+    else setActiveGame(game)
+  }
+
+  async function applyBulkStatus(status) {
+    const ids = selectedGames.map((game) => game.id)
+    if (ids.length === 0) return
+    setBulkBusy(true)
+    setBulkMessage(null)
+    try {
+      const result = await bulkUpdateStatus(id, ids, status)
+      const changed = new Map(result.games.map((game) => [game.id, game]))
+      setList((prev) => ({ ...prev, games: prev.games.map((game) => changed.get(game.id) ?? game) }))
+      clearSelection()
+      setBulkMessage({ text: `Moved ${result.updated} ${result.updated === 1 ? 'game' : 'games'} to ${status}.` })
+    } catch (err) {
+      setBulkMessage({ error: true, text: err.message })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   if (error === 'List not found') return <NotFound />
   if (error) return <p className="error">{error}</p>
   if (!list) return <p role="status">Loading…</p>
@@ -128,6 +196,9 @@ export default function ListView() {
               List
             </button>
           </div>
+          <button type="button" className="btn-ghost select-toggle" aria-pressed={selecting} onClick={toggleSelecting}>
+            {selecting ? 'Done' : 'Select'}
+          </button>
         </div>
       </div>
 
@@ -137,7 +208,10 @@ export default function ListView() {
             key={tab}
             type="button"
             className={`filter-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setParam('status', tab, 'All')}
+            onClick={() => {
+              setParam('status', tab, 'All')
+              clearSelection()
+            }}
           >
             {tab}
           </button>
@@ -150,61 +224,102 @@ export default function ListView() {
       {viewMode === 'grid' ? (
         <div className="results">
           {visibleGames.map((game) => (
-            <div key={game.id} className="game-card clickable" onClick={() => setActiveGame(game)}>
+            <div
+              key={game.id}
+              className={`game-card clickable${selectedIds.has(game.id) ? ' selected' : ''}`}
+              onClick={(e) => openOrPick(game, e)}
+            >
+              {selecting && (
+                <input
+                  type="checkbox"
+                  className="select-box"
+                  aria-label={`Select ${game.name}`}
+                  checked={selectedIds.has(game.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => handlePick(game, e.nativeEvent.shiftKey)}
+                />
+              )}
               {game.cover_url && (
                 <img src={game.cover_url} alt={game.name} width="264" height="352" loading="lazy" decoding="async" />
               )}
               <h3 translate="no">
-                <button type="button" className="game-title-btn" onClick={() => setActiveGame(game)}>
+                {/* A click bubbles up to the card, which opens the game (or picks it in select mode). */}
+                <button type="button" className="game-title-btn">
                   {game.name}
                 </button>
               </h3>
               {showPlaytime && <p className="game-playtime">{formatPlaytime(game.hours_played)}</p>}
-              <div className="game-card-actions">
-                <StatusBubble
-                  status={game.status}
-                  onChange={(newStatus) => handleStatusChange(game, newStatus)}
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setPendingRemove(game)
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
+              {selecting ? (
+                <div className="game-card-actions">
+                  <span className={`status-badge status-${game.status.toLowerCase()} static`}>{game.status}</span>
+                </div>
+              ) : (
+                <div className="game-card-actions">
+                  <StatusBubble
+                    status={game.status}
+                    onChange={(newStatus) => handleStatusChange(game, newStatus)}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPendingRemove(game)
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
       ) : (
         <div className="game-rows">
           {visibleGames.map((game) => (
-            <div key={game.id} className="game-row clickable" onClick={() => setActiveGame(game)}>
+            <div
+              key={game.id}
+              className={`game-row clickable${selectedIds.has(game.id) ? ' selected' : ''}`}
+              onClick={(e) => openOrPick(game, e)}
+            >
+              {selecting && (
+                <input
+                  type="checkbox"
+                  className="select-box"
+                  aria-label={`Select ${game.name}`}
+                  checked={selectedIds.has(game.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => handlePick(game, e.nativeEvent.shiftKey)}
+                />
+              )}
               {game.cover_url ? (
                 <img src={game.cover_url} alt={game.name} width="42" height="56" loading="lazy" decoding="async" />
               ) : (
                 <div className="game-row-cover-placeholder" />
               )}
               <span className="game-row-name" translate="no">
-                <button type="button" className="game-title-btn" onClick={() => setActiveGame(game)}>
+                <button type="button" className="game-title-btn">
                   {game.name}
                 </button>
               </span>
               {showPlaytime && <span className="game-row-playtime">{formatPlaytime(game.hours_played)}</span>}
-              <div className="game-row-actions" onClick={(e) => e.stopPropagation()}>
-                <StatusBubble
-                  status={game.status}
-                  onChange={(newStatus) => handleStatusChange(game, newStatus)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setPendingRemove(game)}
-                >
-                  Remove
-                </button>
-              </div>
+              {selecting ? (
+                <div className="game-row-actions">
+                  <span className={`status-badge status-${game.status.toLowerCase()} static`}>{game.status}</span>
+                </div>
+              ) : (
+                <div className="game-row-actions" onClick={(e) => e.stopPropagation()}>
+                  <StatusBubble
+                    status={game.status}
+                    onChange={(newStatus) => handleStatusChange(game, newStatus)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPendingRemove(game)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -231,6 +346,18 @@ export default function ListView() {
           cancelLabel="Cancel"
           onConfirm={handleConfirmRemove}
           onCancel={() => setPendingRemove(null)}
+        />
+      )}
+
+      {selecting && (
+        <BulkStatusBar
+          count={selectedGames.length}
+          visibleCount={visibleGames.length}
+          busy={bulkBusy}
+          message={bulkMessage}
+          onSelectAll={() => setSelectedIds(new Set(visibleGames.map((game) => game.id)))}
+          onClear={clearSelection}
+          onApply={applyBulkStatus}
         />
       )}
     </div>

@@ -145,6 +145,46 @@ router.put("/:id/games/:gameId", (req, res) => {
   res.json(game);
 });
 
+// Changes the status of several games in one list at once (the list page's multi-select). Only status changes here,
+// so rating, hours and notes are left exactly as they are. A game that is already Completed keeps its original
+// completion date. Ids that are not in this list are skipped, and the answer says how many were changed.
+router.patch("/:id/games", (req, res) => {
+  const { ids, status } = req.body ?? {};
+
+  if (!VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(", ")}` });
+  }
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.length > LIMITS.gamesPerList ||
+    !ids.every((id) => Number.isInteger(id) && id > 0)
+  ) {
+    return res.status(400).json({ error: `ids must be a list of 1 to ${LIMITS.gamesPerList} game ids` });
+  }
+
+  const list = ownedList(req);
+  if (!list) return res.status(404).json({ error: "List not found" });
+
+  const find = db.prepare("SELECT * FROM list_games WHERE id = ? AND list_id = ?");
+  const update = db.prepare("UPDATE list_games SET status = ?, date_completed = ? WHERE id = ? AND list_id = ?");
+  const now = new Date().toISOString();
+  const games = [];
+
+  db.transaction(() => {
+    for (const id of new Set(ids)) {
+      const existing = find.get(id, list.id);
+      if (!existing) continue;
+      const newlyCompleted = status === "Completed" && (existing.status !== "Completed" || !existing.date_completed);
+      update.run(status, newlyCompleted ? now : existing.date_completed, id, list.id);
+      games.push(find.get(id, list.id));
+    }
+  })();
+
+  if (games.length === 0) return res.status(404).json({ error: "None of those games are in this list" });
+  res.json({ updated: games.length, games });
+});
+
 router.delete("/:id/games/:gameId", (req, res) => {
   const list = ownedList(req);
   if (list) {

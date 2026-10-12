@@ -19,7 +19,7 @@ describe('what keeps the page inside the screen width', () => {
   it('pins the page to the screen width instead of letting it size itself to its widest content', () => {
     const app = rule('.app')
     expect(app).toMatch(/\bwidth:\s*100%/)
-    expect(app).toMatch(/max-width:\s*1040px/)
+    expect(app).toMatch(/max-width:\s*1200px/)
   })
 
   it('breaks very long unbroken words instead of letting them push the page wider', () => {

@@ -36,8 +36,10 @@ describe('Dashboard', () => {
   it('shows total hours played', async () => {
     vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
     render(<Dashboard />)
-    expect(await screen.findByText('1,234 hours')).toBeTruthy()
-    expect(screen.getByText('Total hours played')).toBeTruthy()
+    const label = await screen.findByText('Total hours played')
+    const card = label.closest('.stat-card')
+    expect(card.querySelector('.stat-number').textContent).toBe('1,234')
+    expect(card.querySelector('.stat-unit').textContent).toBe('hours')
     expect(screen.queryByText(/leaves out/)).toBeNull()
   })
 

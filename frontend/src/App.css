@@ -2,6 +2,7 @@
   --navy: #f1f5fa;
   --accent: #4fd1b5;
   --accent-hover: #7be3cc;
+  --select: #5b9bff;
   --on-accent: #0b1714;
   --accent-soft: rgba(79, 209, 181, 0.12);
   --accent-softer: rgba(79, 209, 181, 0.2);
@@ -21,7 +22,7 @@
   --shadow-hover: 0 14px 32px rgba(0, 0, 0, 0.45);
 
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
   /* A long unbroken word (a very long title, say) breaks instead of pushing the page wider than the screen */
   overflow-wrap: anywhere;
@@ -317,7 +318,7 @@ button:disabled {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 1.25rem 1.3rem 1.15rem;
+  padding: 1.15rem 1.15rem 1.05rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -343,24 +344,53 @@ button:disabled {
 }
 
 .stat-card:nth-child(4) {
-  --tone: var(--success);
-}
-
-.stat-card:nth-child(5) {
   --tone: var(--pink);
 }
 
+.stat-card:nth-child(5) {
+  --tone: #f5b94f;
+}
+
 .stat-value {
-  font-size: 1.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.35rem;
+  margin-top: 0.15rem;
+  font-size: 2rem;
   font-weight: 800;
-  color: var(--navy);
+  line-height: 1.1;
+  color: var(--tone);
   letter-spacing: -0.5px;
+  overflow-wrap: normal;
+}
+
+.stat-number,
+.stat-unit {
+  white-space: nowrap;
+}
+
+.stat-unit {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text);
 }
 
 .stat-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 500;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* Titles of different lengths would push the numbers to different heights, so reserve two lines for each. */
+@media (min-width: 720px) {
+  .stat-label {
+    min-height: 2.8em;
+  }
 }
 
 .dashboard-panels {
@@ -467,39 +497,36 @@ button:disabled {
 }
 
 .currently-playing-covers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1rem 1rem;
 }
 
 .currently-playing-item {
-  width: 104px;
+  min-width: 0;
   text-align: center;
 }
 
-.currently-playing-item img {
-  width: 104px;
-  height: 139px;
+.currently-playing-item img,
+.currently-playing-placeholder {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
   object-fit: cover;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   display: block;
+  box-sizing: border-box;
 }
 
 .currently-playing-placeholder {
-  width: 104px;
-  height: 139px;
-  border-radius: var(--radius-sm);
   background: var(--card-raised);
-  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 2rem;
   font-weight: 700;
   color: var(--text-muted);
-  padding: 0.5rem;
-  box-sizing: border-box;
 }
 
 .currently-playing-name {
@@ -1437,4 +1464,110 @@ button {
   .game-row.clickable:hover {
     transform: none;
   }
+}
+
+/* Select mode */
+
+.game-card {
+  position: relative;
+}
+
+/* The checkbox stays in the page for the keyboard and screen readers, but what you see is the highlighted box. */
+.select-box {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-card.selected,
+.game-row.selected {
+  background: rgba(91, 155, 255, 0.16);
+  box-shadow: 0 0 0 2px var(--select), 0 10px 26px rgba(91, 155, 255, 0.22);
+}
+
+.game-card.selected {
+  border-color: var(--select);
+}
+
+.game-card:has(.select-box:focus-visible),
+.game-row:has(.select-box:focus-visible) {
+  outline: 2px dashed var(--select);
+  outline-offset: 3px;
+}
+
+/* In select mode the status is shown but cannot be clicked. */
+.status-badge.static,
+.status-badge.static:hover {
+  cursor: inherit;
+  filter: none;
+}
+
+/* A span inherits the page's tall line height; match the real status button so nothing shifts in select mode. */
+.status-badge.static {
+  line-height: normal;
+}
+
+.bulk-bar {
+  position: sticky;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+  margin-top: 1.5rem;
+  padding: 0.8rem 1rem;
+  background: var(--card-raised);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hover);
+}
+
+.bulk-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-bar .btn-ghost {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+}
+
+.bulk-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.bulk-statuses-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-right: 0.15rem;
+}
+
+.bulk-bar .status-badge {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+}
+
+.bulk-message {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+  color: var(--success);
+}
+
+.bulk-message:empty {
+  display: none;
+}
+
+.bulk-message.error {
+  color: var(--danger);
 }
