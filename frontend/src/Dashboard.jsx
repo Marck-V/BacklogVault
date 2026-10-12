@@ -95,11 +95,11 @@ export default function Dashboard() {
               {overLimit.map((game) => (
                 <li key={game.igdb_id}>
                   <label>
-                    <input type="checkbox" checked={game.included} onChange={() => toggleIncluded(game)} />
                     <span className="left-out-name">{game.name}</span>
                     <span className="left-out-hours">
                       {formatHours(game.main_story_seconds)} main · {formatHours(game.completionist_seconds)} 100%
                     </span>
+                    <input type="checkbox" checked={game.included} onChange={() => toggleIncluded(game)} />
                   </label>
                 </li>
               ))}
