@@ -83,7 +83,7 @@ describe("GET /api/stats/currently-playing from Steam", () => {
     });
 
     const res = await client.get("/api/stats/currently-playing");
-    expect(res.body.source).toBe("steam");
+    expect(res.body).toMatchObject({ source: "steam", steam_linked: true, steam_failed: false });
     expect(res.body.games).toEqual([
       { igdb_id: 233, name: "Half-Life 2", cover_url: null, hours_last_two_weeks: 10 },
       {
@@ -157,6 +157,61 @@ describe("GET /api/stats/currently-playing from Steam", () => {
 
     expect((await client.get("/api/stats/currently-playing")).body.source).toBe("manual");
     expect(steamCalls).toHaveLength(0);
+  });
+});
+
+describe("POST /api/steam/refresh", () => {
+  it("re-reads Steam even though the last answer is cached", async () => {
+    await userWithSteam();
+    stubSteamRecent([{ appid: 570, name: "Dota 2", playtime_2weeks: 90 }]);
+    stubIgdb({ catalogue: { 570: { id: 2963, name: "Dota 2" }, 220: { id: 233, name: "Half-Life 2" } } });
+    await client.get("/api/stats/currently-playing");
+    expect(steamCalls).toHaveLength(1);
+
+    stubSteamRecent([
+      { appid: 220, name: "Half-Life 2", playtime_2weeks: 300 },
+      { appid: 570, name: "Dota 2", playtime_2weeks: 90 },
+    ]);
+    const res = await client.post("/api/steam/refresh");
+    expect(res.status).toBe(200);
+    expect(steamCalls).toHaveLength(1); // the new stub's own call
+    expect(res.body.currently_playing.games.map((g) => g.name)).toEqual(["Half-Life 2", "Dota 2"]);
+
+    // and the page's next normal load sees the fresh answer without asking Steam again
+    const after = await client.get("/api/stats/currently-playing");
+    expect(after.body.games.map((g) => g.name)).toEqual(["Half-Life 2", "Dota 2"]);
+    expect(steamCalls).toHaveLength(1);
+  });
+
+  it("makes you wait between refreshes", async () => {
+    await userWithSteam();
+    stubSteamRecent([{ appid: 570, name: "Dota 2", playtime_2weeks: 90 }]);
+    stubIgdb({ catalogue: { 570: { id: 2963, name: "Dota 2" } } });
+
+    expect((await client.post("/api/steam/refresh")).status).toBe(200);
+    const second = await client.post("/api/steam/refresh");
+    expect(second.status).toBe(429);
+    expect(Number(second.headers["retry-after"])).toBeGreaterThan(0);
+    expect(steamCalls).toHaveLength(1);
+  });
+
+  it("needs a session and a linked Steam account", async () => {
+    expect((await request(app).post("/api/steam/refresh")).status).toBe(401);
+
+    const list = await createList(client);
+    await addGame(client, list.id, { igdb_id: 1 });
+    const res = await client.post("/api/steam/refresh");
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/Import your Steam library first/);
+  });
+
+  it("reports a Steam failure instead of silently showing old data", async () => {
+    await userWithSteam();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 503 })));
+
+    const res = await client.post("/api/steam/refresh");
+    expect(res.status).toBe(200);
+    expect(res.body.currently_playing).toMatchObject({ source: "manual", steam_linked: true, steam_failed: true });
   });
 });
 

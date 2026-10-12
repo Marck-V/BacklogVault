@@ -25,9 +25,13 @@ export function clearDashboardCaches() {
 // What the "currently playing" widget shows. A user who has imported from Steam gets the games they played in the
 // last two weeks (set up automatically); anyone else, or anyone whose Steam lookup fails or comes back empty, gets the
 // games they marked as Playing by hand.
-export async function currentlyPlaying(userId) {
-  const manual = () => ({
+export async function currentlyPlaying(userId, { force = false } = {}) {
+  const steamId = db.prepare("SELECT steam_id FROM users WHERE id = ?").get(userId)?.steam_id;
+  const steamLinked = Boolean(steamId);
+  const manual = (steamFailed = false) => ({
     source: "manual",
+    steam_linked: steamLinked,
+    steam_failed: steamFailed,
     games: db
       .prepare(
         `SELECT lg.igdb_id, lg.name, lg.cover_url, MIN(lg.added_at) AS added_at
@@ -40,12 +44,11 @@ export async function currentlyPlaying(userId) {
   });
 
   const apiKey = process.env.STEAM_API_KEY;
-  const steamId = db.prepare("SELECT steam_id FROM users WHERE id = ?").get(userId)?.steam_id;
   if (!apiKey || !steamId) return manual();
 
   const cached = recentCache.get(userId);
-  if (cached && cached.steamId === steamId && Date.now() - cached.at < RECENT_CACHE_MS) {
-    return cached.games.length ? { source: "steam", games: cached.games } : manual();
+  if (!force && cached && cached.steamId === steamId && Date.now() - cached.at < RECENT_CACHE_MS) {
+    return cached.games.length ? { source: "steam", steam_linked: true, steam_failed: false, games: cached.games } : manual();
   }
 
   let games;
@@ -68,11 +71,11 @@ export async function currentlyPlaying(userId) {
   } catch (err) {
     // Steam or IGDB is down. Log the kind of failure (never the request: Steam's URL carries the key) and fall back.
     console.error(err.kind ? `Recently played failed: ${err.kind}` : err);
-    return manual();
+    return manual(true);
   }
 
   remember(recentCache, userId, { at: Date.now(), steamId, games });
-  return games.length ? { source: "steam", games } : manual();
+  return games.length ? { source: "steam", steam_linked: true, steam_failed: false, games } : manual();
 }
 
 // Counts the user's library by IGDB genre. A game with two genres counts once in each. Returns null when IGDB

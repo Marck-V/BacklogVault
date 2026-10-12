@@ -15,7 +15,7 @@ export default function SiteHeader() {
   return (
     <header className="site-header">
       <span className="header-spacer" />
-      <Link to="/" className="site-title">
+      <Link to="/" className="site-title" translate="no">
         BacklogVault
       </Link>
 
@@ -23,10 +23,10 @@ export default function SiteHeader() {
         {!loading && !user && (
           <>
             <button type="button" className="btn-ghost" onClick={() => openAuth('signin')}>
-              Sign in
+              Sign In
             </button>
             <button type="button" onClick={() => openAuth('signup')}>
-              Create account
+              Create Account
             </button>
           </>
         )}
@@ -34,10 +34,10 @@ export default function SiteHeader() {
           <>
             <span className="user-pill">Guest</span>
             <button type="button" onClick={() => openAuth('signup')}>
-              Create account
+              Create Account
             </button>
             <button type="button" className="btn-ghost" onClick={() => openAuth('signin')}>
-              Sign in
+              Sign In
             </button>
           </>
         )}
@@ -47,7 +47,7 @@ export default function SiteHeader() {
               {user.email}
             </span>
             <button type="button" className="btn-ghost" onClick={handleSignOut}>
-              Sign out
+              Sign Out
             </button>
           </>
         )}
@@ -55,6 +55,8 @@ export default function SiteHeader() {
 
       {confirmSignOut && (
         <ConfirmDialog
+          confirmLabel="Sign Out"
+          cancelLabel="Cancel"
           message="You're using a guest session, so signing out leaves your library behind on this browser. Create an account first to keep it. Sign out anyway?"
           onConfirm={() => {
             setConfirmSignOut(false)

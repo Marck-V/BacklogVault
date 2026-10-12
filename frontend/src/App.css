@@ -25,7 +25,8 @@
   margin: 0 auto;
   /* A long unbroken word (a very long title, say) breaks instead of pushing the page wider than the screen */
   overflow-wrap: anywhere;
-  padding: 2rem 2rem 4rem;
+  padding: 2rem max(2rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
+    max(2rem, env(safe-area-inset-left));
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -194,9 +195,9 @@ textarea {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-input:focus,
-textarea:focus,
-select:focus {
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -274,6 +275,34 @@ button:disabled {
 }
 
 /* Dashboard */
+
+.dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.refresh-ok {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.refresh-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 
 .dashboard {
   display: grid;
@@ -466,8 +495,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
   color: var(--text-muted);
   padding: 0.5rem;
   box-sizing: border-box;
@@ -517,6 +546,7 @@ button:disabled {
 
 .game-card img {
   width: 100%;
+  height: auto;
   border-radius: var(--radius-sm);
   display: block;
   margin-bottom: 0.6rem;
@@ -896,6 +926,7 @@ button:disabled {
 
 .modal-cover {
   max-width: 160px;
+  height: auto;
   display: block;
   margin: 0 auto 1.25rem;
   border-radius: var(--radius-md);
@@ -1243,7 +1274,8 @@ button:disabled {
 
 @media (max-width: 480px) {
   .app {
-    padding: 1.25rem 1rem 3rem;
+    padding: 1.25rem max(1rem, env(safe-area-inset-right)) max(3rem, env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
   }
 
   .game-row {
@@ -1276,5 +1308,133 @@ button:disabled {
 
   .genre-donut {
     align-self: center;
+  }
+}
+
+/* Accessibility and interaction polish */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app .skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 200;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app .skip-link:focus {
+  top: 1rem;
+}
+
+main:focus,
+.modal:focus {
+  outline: none;
+}
+
+.app a:focus-visible,
+.app button:focus-visible,
+.app summary:focus-visible,
+.app select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.modal-overlay,
+.modal {
+  overscroll-behavior: contain;
+}
+
+a,
+button,
+input,
+select,
+textarea,
+label,
+summary {
+  touch-action: manipulation;
+}
+
+a,
+button {
+  -webkit-tap-highlight-color: rgba(79, 209, 181, 0.2);
+}
+
+@media (pointer: fine) {
+  html {
+    overscroll-behavior: none;
+  }
+}
+
+.app h1,
+.app h2,
+.app h3 {
+  text-wrap: balance;
+}
+
+.stat-value,
+.left-out-hours,
+.game-playtime,
+.game-row-playtime,
+.currently-playing-hours,
+.genre-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-badge:hover {
+  filter: brightness(1.2);
+}
+
+/* A game's title is a real button (so the keyboard can open it) that looks like plain text. */
+.game-title-btn,
+.game-title-btn:hover:not(:disabled) {
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  overflow-wrap: anywhere;
+  transform: none;
+  cursor: pointer;
+}
+
+.game-title-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  button:hover:not(:disabled),
+  .game-card.clickable:hover,
+  .game-row.clickable:hover {
+    transform: none;
   }
 }

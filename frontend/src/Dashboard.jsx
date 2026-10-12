@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
-import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded } from './api'
+import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
 
 function formatHours(seconds) {
   if (seconds == null) return '—'
   if (!seconds) return '0 hours'
-  return `${Math.round(seconds / 3600).toLocaleString()} hours`
+  return `${Math.round(seconds / 3600).toLocaleString()}\u00a0hours`
 }
 
 function formatHoursPlayed(hours) {
   if (hours == null) return '—'
-  return `${Math.round(hours).toLocaleString()} hours`
+  return `${Math.round(hours).toLocaleString()}\u00a0hours`
 }
 
 // Colours for the genre chart, in order of size. "Other" always gets the last, neutral one.
@@ -110,13 +110,17 @@ function PlayingPanel({ playing }) {
           {playing.games.map((game) => (
             <div key={game.igdb_id} className="currently-playing-item">
               {game.cover_url ? (
-                <img src={game.cover_url} alt={game.name} />
+                <img src={game.cover_url} alt={game.name} width="104" height="139" loading="lazy" decoding="async" />
               ) : (
-                <div className="currently-playing-placeholder">{game.name}</div>
+                <div className="currently-playing-placeholder" aria-hidden="true">
+                  {game.name.charAt(0).toUpperCase()}
+                </div>
               )}
-              <span className="currently-playing-name">{game.name}</span>
+              <span className="currently-playing-name" translate="no">
+                {game.name}
+              </span>
               {fromSteam && game.hours_last_two_weeks > 0 && (
-                <span className="currently-playing-hours">{game.hours_last_two_weeks.toLocaleString()} h in 2 weeks</span>
+                <span className="currently-playing-hours">{`${game.hours_last_two_weeks.toLocaleString()}\u00a0h in 2 weeks`}</span>
               )}
             </div>
           ))}
@@ -134,6 +138,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [showLeftOut, setShowLeftOut] = useState(false)
   const [toggleError, setToggleError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState(null)
 
   useEffect(() => {
     // The hour totals are the main event; the two extra panels may fail without taking the dashboard down.
@@ -151,6 +157,25 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Re-reads the small, fast-changing bits from Steam. For now that is the recently played list.
+  async function handleRefresh() {
+    setRefreshing(true)
+    setRefreshMessage(null)
+    try {
+      const result = await refreshFromSteam()
+      setPlaying(result.currently_playing)
+      setRefreshMessage(
+        result.currently_playing.steam_failed
+          ? { error: true, text: "Steam isn't responding right now, so nothing was updated." }
+          : { text: 'Updated from Steam.' }
+      )
+    } catch (err) {
+      setRefreshMessage({ error: true, text: err.message })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   async function toggleIncluded(game) {
     setToggleError(null)
     try {
@@ -162,12 +187,31 @@ export default function Dashboard() {
   }
 
   const overLimit = stats?.over_limit_games ?? []
-  if (loading) return <p>Loading stats...</p>
-  if (error) return <p className="error">{error}</p>
+  if (loading) return <p role="status">Loading stats…</p>
+  if (error) {
+    return (
+      <p className="error" role="alert">
+        {error}
+      </p>
+    )
+  }
   if (!stats || (stats.game_count === 0 && stats.completed_count === 0)) return null
 
   return (
     <div>
+      {playing.steam_linked && (
+        <div className="dashboard-toolbar">
+          {refreshMessage && (
+            <span className={refreshMessage.error ? 'error' : 'refresh-ok'} role="status">
+              {refreshMessage.text}
+            </span>
+          )}
+          <button type="button" className="refresh-btn" onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : '↻ Refresh from Steam'}
+          </button>
+        </div>
+      )}
+
       <div className="dashboard">
         <div className="stat-card">
           <span className="stat-value">{stats.game_count}</span>

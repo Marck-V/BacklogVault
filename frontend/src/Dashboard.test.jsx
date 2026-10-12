@@ -5,11 +5,12 @@ vi.mock('./api', () => ({
   getTimeToBeatStats: vi.fn(),
   getCurrentlyPlaying: vi.fn(),
   getGenreBreakdown: vi.fn(),
+  refreshFromSteam: vi.fn(),
   setEstimateIncluded: vi.fn(),
 }))
 
 import Dashboard from './Dashboard'
-import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded } from './api'
+import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
 
 const BASE = {
   game_count: 3,
@@ -136,5 +137,71 @@ describe('Dashboard', () => {
     vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
     render(<Dashboard />)
     expect(await screen.findByText(/Import your Steam library/)).toBeTruthy()
+  })
+
+  describe('refresh button', () => {
+    const steamPlaying = (names) => ({
+      source: 'steam',
+      steam_linked: true,
+      steam_failed: false,
+      games: names.map((name, i) => ({ igdb_id: i + 1, name, cover_url: null, hours_last_two_weeks: 1 })),
+    })
+
+    it('is hidden until a Steam account has been linked', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      render(<Dashboard />)
+      await screen.findByText('Total hours played')
+      expect(screen.queryByRole('button', { name: /Refresh from Steam/ })).toBeNull()
+    })
+
+    it('updates the recently played list', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Old Game']))
+      vi.mocked(refreshFromSteam).mockResolvedValue({ currently_playing: steamPlaying(['New Game']) })
+      render(<Dashboard />)
+
+      expect(await screen.findByText('Old Game')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: /Refresh from Steam/ }))
+      expect(await screen.findByText('New Game')).toBeTruthy()
+      expect(screen.queryByText('Old Game')).toBeNull()
+      expect(screen.getByText('Updated from Steam.')).toBeTruthy()
+    })
+
+    it('disables the button while it works', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Alpha']))
+      let finish
+      vi.mocked(refreshFromSteam).mockReturnValue(new Promise((resolve) => (finish = resolve)))
+      render(<Dashboard />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Refresh from Steam/ }))
+      const busy = await screen.findByRole('button', { name: /Refreshing/ })
+      expect(busy.disabled).toBe(true)
+      finish({ currently_playing: steamPlaying(['Alpha']) })
+      await screen.findByRole('button', { name: /Refresh from Steam/ })
+    })
+
+    it('shows the server message when refreshing is refused', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Alpha']))
+      vi.mocked(refreshFromSteam).mockRejectedValue(new Error('Refreshed a moment ago. Try again in a few seconds.'))
+      render(<Dashboard />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Refresh from Steam/ }))
+      expect(await screen.findByText(/Refreshed a moment ago/)).toBeTruthy()
+      expect(screen.getByText('Alpha')).toBeTruthy() // the old list stays
+    })
+
+    it("says so when Steam isn't responding", async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Alpha']))
+      vi.mocked(refreshFromSteam).mockResolvedValue({
+        currently_playing: { source: 'manual', steam_linked: true, steam_failed: true, games: [] },
+      })
+      render(<Dashboard />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Refresh from Steam/ }))
+      expect(await screen.findByText(/Steam isn't responding/)).toBeTruthy()
+    })
   })
 })

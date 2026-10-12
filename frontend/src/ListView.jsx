@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getList, getLists, removeGameFromList, updateGameEntry } from './api'
 import GameSearch from './GameSearch'
 import SteamImport from './SteamImport'
@@ -19,10 +19,26 @@ export default function ListView() {
   const [allLists, setAllLists] = useState([])
   const [error, setError] = useState(null)
   const [activeGame, setActiveGame] = useState(null)
-  const [activeTab, setActiveTab] = useState('All')
   const [pendingRemove, setPendingRemove] = useState(null)
-  const [viewMode, setViewMode] = useState('grid')
-  const [sortKey, setSortKey] = useState('recent')
+  // Tab, sort and view live in the address, so a refresh, a shared link and the back button all keep them.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusParam = searchParams.get('status')
+  const activeTab = TABS.includes(statusParam) ? statusParam : 'All'
+  const sortParam = searchParams.get('sort')
+  const sortKey = SORT_OPTIONS.some((option) => option.value === sortParam) ? sortParam : 'recent'
+  const viewMode = searchParams.get('view') === 'list' ? 'list' : 'grid'
+
+  function setParam(key, value, defaultValue) {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        if (value === defaultValue) next.delete(key)
+        else next.set(key, value)
+        return next
+      },
+      { replace: true }
+    )
+  }
 
   usePageTitle(list?.name)
 
@@ -76,7 +92,7 @@ export default function ListView() {
 
   if (error === 'List not found') return <NotFound />
   if (error) return <p className="error">{error}</p>
-  if (!list) return <p>Loading...</p>
+  if (!list) return <p role="status">Loading…</p>
 
   return (
     <div>
@@ -88,7 +104,7 @@ export default function ListView() {
         <div className="list-toolbar-controls">
           <label className="sort-control">
             <span>Sort by</span>
-            <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+            <select value={sortKey} onChange={(e) => setParam('sort', e.target.value, 'recent')}>
               {SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -100,14 +116,14 @@ export default function ListView() {
             <button
               type="button"
               className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
+              onClick={() => setParam('view', 'grid', 'grid')}
             >
               Grid
             </button>
             <button
               type="button"
               className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setViewMode('list')}
+              onClick={() => setParam('view', 'list', 'grid')}
             >
               List
             </button>
@@ -121,7 +137,7 @@ export default function ListView() {
             key={tab}
             type="button"
             className={`filter-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => setParam('status', tab, 'All')}
           >
             {tab}
           </button>
@@ -135,8 +151,14 @@ export default function ListView() {
         <div className="results">
           {visibleGames.map((game) => (
             <div key={game.id} className="game-card clickable" onClick={() => setActiveGame(game)}>
-              {game.cover_url && <img src={game.cover_url} alt={game.name} />}
-              <h3>{game.name}</h3>
+              {game.cover_url && (
+                <img src={game.cover_url} alt={game.name} width="264" height="352" loading="lazy" decoding="async" />
+              )}
+              <h3 translate="no">
+                <button type="button" className="game-title-btn" onClick={() => setActiveGame(game)}>
+                  {game.name}
+                </button>
+              </h3>
               {showPlaytime && <p className="game-playtime">{formatPlaytime(game.hours_played)}</p>}
               <div className="game-card-actions">
                 <StatusBubble
@@ -161,11 +183,15 @@ export default function ListView() {
           {visibleGames.map((game) => (
             <div key={game.id} className="game-row clickable" onClick={() => setActiveGame(game)}>
               {game.cover_url ? (
-                <img src={game.cover_url} alt={game.name} />
+                <img src={game.cover_url} alt={game.name} width="42" height="56" loading="lazy" decoding="async" />
               ) : (
                 <div className="game-row-cover-placeholder" />
               )}
-              <span className="game-row-name">{game.name}</span>
+              <span className="game-row-name" translate="no">
+                <button type="button" className="game-title-btn" onClick={() => setActiveGame(game)}>
+                  {game.name}
+                </button>
+              </span>
               {showPlaytime && <span className="game-row-playtime">{formatPlaytime(game.hours_played)}</span>}
               <div className="game-row-actions" onClick={(e) => e.stopPropagation()}>
                 <StatusBubble
@@ -200,7 +226,9 @@ export default function ListView() {
 
       {pendingRemove && (
         <ConfirmDialog
-          message={`Remove "${pendingRemove.name}" from this list?`}
+          message={`Remove “${pendingRemove.name}” from this list?`}
+          confirmLabel="Remove Game"
+          cancelLabel="Cancel"
           onConfirm={handleConfirmRemove}
           onCancel={() => setPendingRemove(null)}
         />

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { getGameDetails, updateGameEntry } from './api'
+import Modal from './Modal'
 import { STATUSES } from './statuses'
 
 function formatDate(unixSeconds) {
@@ -9,7 +10,7 @@ function formatDate(unixSeconds) {
 
 function formatHours(seconds) {
   if (!seconds) return 'Unknown'
-  return `${Math.round(seconds / 3600)} hours`
+  return `${Math.round(seconds / 3600)}\u00a0hours`
 }
 
 const RATING_STATUSES = ['Completed', 'Dropped']
@@ -23,6 +24,7 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
   const [hoursPlayed, setHoursPlayed] = useState(game.hours_played ?? '')
   const [notes, setNotes] = useState(game.notes ?? '')
   const [saving, setSaving] = useState(false)
+  const titleId = useId()
 
   useEffect(() => {
     setLoading(true)
@@ -62,88 +64,102 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal-close" onClick={onClose}>
-          &times;
-        </button>
-        <h2>{game.name}</h2>
-        {game.cover_url && <img className="modal-cover" src={game.cover_url} alt={game.name} />}
+    <Modal onClose={onClose} labelledBy={titleId}>
+      <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+        &times;
+      </button>
+      <h2 id={titleId} translate="no">
+        {game.name}
+      </h2>
+      {game.cover_url && <img className="modal-cover" src={game.cover_url} alt={game.name} width="160" height="213" />}
 
-        <label className="status-label">
-          Status:{' '}
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value)
-              handleSave({ status: e.target.value })
-            }}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+      <label className="status-label">
+        Status:{' '}
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value)
+            handleSave({ status: e.target.value })
+          }}
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
 
-        {showRating && (
-          <label className="field-label">
-            Rating (1-10):
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              onBlur={() => handleSave()}
-            />
-          </label>
-        )}
-
+      {showRating && (
         <label className="field-label">
-          Hours played:
+          Rating (1-10):
           <input
             type="number"
-            min="0"
-            max="100000"
-            step="0.5"
-            value={hoursPlayed}
-            onChange={(e) => setHoursPlayed(e.target.value)}
+            name="rating"
+            autoComplete="off"
+            min="1"
+            max="10"
+            value={rating}
+            onChange={(e) => setRating(e.target.value)}
             onBlur={() => handleSave()}
           />
         </label>
+      )}
 
-        <label className="field-label">
-          Notes:
-          <textarea
-            value={notes}
-            maxLength={2000}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => handleSave()}
-          />
-        </label>
+      <label className="field-label">
+        Hours played:
+        <input
+          type="number"
+          name="hoursPlayed"
+          autoComplete="off"
+          min="0"
+          max="100000"
+          step="0.5"
+          value={hoursPlayed}
+          onChange={(e) => setHoursPlayed(e.target.value)}
+          onBlur={() => handleSave()}
+        />
+      </label>
 
-        {saving && <p className="status-ok">Saving...</p>}
-        {loading && <p>Loading details...</p>}
-        {error && <p className="error">{error}</p>}
+      <label className="field-label">
+        Notes:
+        <textarea
+          name="notes"
+          autoComplete="off"
+          value={notes}
+          maxLength={2000}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => handleSave()}
+        />
+      </label>
 
-        {details && (
-          <dl className="details-list">
-            <dt>Developer</dt>
-            <dd>{details.developer ?? 'Unknown'}</dd>
+      {saving && (
+        <p className="status-ok" role="status">
+          Saving…
+        </p>
+      )}
+      {loading && <p role="status">Loading details…</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
-            <dt>Release Date</dt>
-            <dd>{formatDate(details.first_release_date)}</dd>
+      {details && (
+        <dl className="details-list">
+          <dt>Developer</dt>
+          <dd>{details.developer ?? 'Unknown'}</dd>
 
-            <dt>Time to Beat (Main Story)</dt>
-            <dd>{formatHours(details.time_to_beat_main_seconds)}</dd>
+          <dt>Release Date</dt>
+          <dd>{formatDate(details.first_release_date)}</dd>
 
-            <dt>Time to Beat (100%)</dt>
-            <dd>{formatHours(details.time_to_beat_completionist_seconds)}</dd>
-          </dl>
-        )}
-      </div>
-    </div>
+          <dt>Time to Beat (Main Story)</dt>
+          <dd>{formatHours(details.time_to_beat_main_seconds)}</dd>
+
+          <dt>Time to Beat (100%)</dt>
+          <dd>{formatHours(details.time_to_beat_completionist_seconds)}</dd>
+        </dl>
+      )}
+    </Modal>
   )
 }

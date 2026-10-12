@@ -27,8 +27,13 @@ function App() {
   return (
     <AuthProvider>
       <div className="app">
+        <a className="skip-link" href="#main">
+          Skip to main content
+        </a>
         <SiteHeader />
-        <AppRoutes />
+        <main id="main" tabIndex={-1}>
+          <AppRoutes />
+        </main>
         <footer className="site-footer">
           Game data and cover art provided by{' '}
           <a href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">

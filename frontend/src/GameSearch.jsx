@@ -53,17 +53,24 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
     <div>
       <form onSubmit={handleSearch}>
         <input
-          type="text"
+          type="search"
+          aria-label="Search for a game"
+          name="q"
+          autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search for a game..."
+          placeholder="Search for a game, e.g. Hades…"
         />
         <button type="submit" disabled={loading}>
-          {loading ? 'Searching...' : 'Search'}
+          {loading ? 'Searching…' : 'Search'}
         </button>
       </form>
 
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       <div className="results">
         {games.map((game) => {
@@ -71,8 +78,8 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
           const status = statusByGame[game.id]
           return (
             <div key={game.id} className="game-card">
-              {cover && <img src={cover} alt={game.name} />}
-              <h3>{game.name}</h3>
+              {cover && <img src={cover} alt={game.name} width="264" height="352" loading="lazy" decoding="async" />}
+              <h3 translate="no">{game.name}</h3>
               <div className="add-row">
                 <select
                   value={listIdFor(game.id)}
@@ -92,12 +99,18 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
                   onClick={() => handleAdd(game)}
                   disabled={lists.length === 0 || status === 'adding'}
                 >
-                  Add
+                  Add to List
                 </button>
               </div>
-              {status === 'added' && <p className="status-ok">Added!</p>}
+              {status === 'added' && (
+                <p className="status-ok" role="status">
+                  Added!
+                </p>
+              )}
               {status && status !== 'adding' && status !== 'added' && (
-                <p className="error">{status}</p>
+                <p className="error" role="alert">
+                  {status}
+                </p>
               )}
             </div>
           )
