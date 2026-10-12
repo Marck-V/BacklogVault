@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getList, getLists, removeGameFromList, updateGameEntry } from './api'
 import GameSearch from './GameSearch'
 import GameDetailsModal from './GameDetailsModal'
-import StatusBubble, { STATUSES } from './StatusBubble'
+import StatusBubble from './StatusBubble'
+import { STATUSES } from './statuses'
 import ConfirmDialog from './ConfirmDialog'
+import NotFound from './NotFound'
+import { usePageTitle } from './usePageTitle'
 
 const TABS = ['All', ...STATUSES]
 
@@ -18,11 +21,9 @@ export default function ListView() {
   const [pendingRemove, setPendingRemove] = useState(null)
   const [viewMode, setViewMode] = useState('grid')
 
-  useEffect(() => {
-    refresh()
-  }, [id])
+  usePageTitle(list?.name)
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       const [listData, lists] = await Promise.all([getList(id), getLists()])
       setList(listData)
@@ -30,7 +31,11 @@ export default function ListView() {
     } catch (err) {
       setError(err.message)
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   async function handleConfirmRemove() {
     const gameId = pendingRemove.id
@@ -64,6 +69,7 @@ export default function ListView() {
     return list.games.filter((g) => g.status === activeTab)
   }, [list, activeTab])
 
+  if (error === 'List not found') return <NotFound />
   if (error) return <p className="error">{error}</p>
   if (!list) return <p>Loading...</p>
 

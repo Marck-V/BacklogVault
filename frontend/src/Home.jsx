@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getLists, createList, deleteList, EXPORT_BASE } from './api'
 import Dashboard from './Dashboard'
 import { useAuth } from './auth'
+import { usePageTitle } from './usePageTitle'
 
 const BANNER_DISMISSED_KEY = 'bv_guest_banner_dismissed'
 
@@ -15,6 +16,7 @@ function readBannerDismissed() {
 }
 
 export default function Home() {
+  usePageTitle()
   const { user, refreshUser, openAuth } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(readBannerDismissed)
   const [lists, setLists] = useState([])
