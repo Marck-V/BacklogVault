@@ -25,6 +25,12 @@ builder.Services.AddHttpClient("api", client =>
 var app = builder.Build();
 app.UseCors();
 
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    await next();
+});
+
 IResult NothingToExport() =>
     Results.Json(new { error = "Nothing to export yet. Add a game to a list first." }, statusCode: 401);
 

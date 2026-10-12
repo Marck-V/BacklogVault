@@ -39,6 +39,11 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 | 2026-10-12 | Per-IP limits behind two proxies (Caddy then nginx) | with `TRUST_PROXY=1` the API saw the proxy's address for every visitor (172.18.0.5 instead of 203.0.113.7), so the per-IP limits were shared by the whole site: in the real containers, after visitor A used up the login allowance, a different visitor B was refused too (**429**) | the hop count is configurable (`TRUST_PROXY_HOPS`) and validated at startup; with 2 hops visitor A is limited at the 11th attempt (429) and visitor B is still served (**401**); a forged address does not buy extra attempts when the count matches the real chain | both settings run on the real containers; `proxyChain.test.js` (3), `config.test.js` (12) |
 | 2026-10-12 | Crash on an error inside an async handler | an async Express 4 handler that throws made the process exit with code 1 and nothing answered afterwards (demonstrated); register and login had no protection and there was no global error handler; malformed JSON got an HTML error page | errors reach one JSON handler: a 500 with `Something went wrong` (no internals), the app keeps serving, malformed JSON is a JSON 400, an oversized body a JSON 413, an unknown API route a JSON 404 | `errorHandling.test.js` (6); I also confirmed the test run fails on the original bug pattern, so the tests would catch a regression |
 | 2026-10-12 | Abuse limits on writes | **300 of 300** list creations from one client accepted; **100 anonymous clients created 100 guest accounts**; **90,000-character** list and game names accepted (HTTP 201) | through nginx on the real containers: 300 attempts stored **50** (70 refused by the cap, 180 rate limited); 100 anonymous clients created **10** guest accounts (90 refused); 90,000-character names get **400** with a clear message; normal input still works | same scenarios before and after; `abuseLimits.test.js` (3), `limits.test.js` (40) |
+| 2026-10-12 | API shutdown | Docker had to **force-kill** the API: stop took **3,673 ms** and the exit code was **137**; there was no SIGTERM handler and the database was never closed explicitly (nginx and the C# service already exited cleanly in under 1 s) | the API finishes in-flight requests, closes the database and exits **0** in **724 ms**, logging `SIGTERM received, shutting down` and `Shutdown complete`; an 8 s watchdog forces an exit if a connection hangs | `docker compose stop api`, then `docker inspect` for the exit code; `shutdown.test.js` (6 unit tests, plus 1 real-process test that runs in CI on Linux) |
+| 2026-10-12 | First-visit page weight | HTML + JS + CSS sent uncompressed: **265,862 bytes** (JS 251,288) | gzip on (level 6): **82,374 bytes**, **69.0% smaller** (JS 78,397, CSS 3,519, HTML 458, which is below the 1 KB compression threshold) | `curl --compressed -w '%{size_download}'` through nginx, before and after |
+| 2026-10-12 | Repeat visits | no caching headers, only an ETag | hashed build files cached for 1 year (`immutable`); the page itself must be re-checked (`no-cache`) so a new deploy is picked up; a conditional request for the JS returns **304** | `curl -I` and a conditional `curl` |
+| 2026-10-12 | Browser security headers | **0 of 5** (Content-Security-Policy, nosniff, frame, referrer, permissions) on pages; the API sent `X-Powered-By: Express`; nginx disclosed its version in the `Server` header | all 5 on pages, `X-Powered-By` removed, nginx version hidden, helmet's headers on the API, nosniff on the export service. Verified in a real browser: the app works, IGDB covers load, and an off-host image and an inline script are both **blocked**, with no violations from the app itself | headers via `curl -I`; browser console and a `securitypolicyviolation` listener; `headers.test.js` (5) |
+| 2026-10-12 | Production Docker settings | logs unbounded; no memory limits; floating base-image tags (`node:24`, `nginx:alpine`, ...) | logs capped at 3 files of 10 MB per service; memory ceilings of 384, 256 and 64 MB (idle use measured at 22, 18 and 16 MiB); `no-new-privileges` on all 3; **6 of 6** base images pinned by digest, with Dependabot proposing weekly updates (8 update entries: npm x3, NuGet, Docker x3, GitHub Actions) | `docker inspect` for log options, memory and security options; `docker stats --no-stream`; `.github/dependabot.yml` |
 
 **Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
 
@@ -49,30 +54,30 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **193 Node tests + 19 C# tests, 0 failing** (Node: 15 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
+| Automated tests | **204 Node tests passing + 1 that runs only on Linux and in CI, plus 19 C# tests; 0 failing** (Node: 17 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
 | Tests before this work | **0** | (none existed) |
-| Line coverage (Node) | **95.8%** (341/356) | `cd backend && npm run test:coverage` |
-| Statement coverage | 95.4% | same |
-| Branch coverage | 91.1% | same |
-| Function coverage | 96.9% | same |
-| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) to 95.8% (193 tests, after the pre-deployment fixes) | earlier measurements |
+| Line coverage (Node) | **95.2%** (359/377) | `cd backend && npm run test:coverage` |
+| Statement coverage | 94.5% | same |
+| Branch coverage | 91.4% | same |
+| Function coverage | 94.3% | same |
+| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) to 95.8% (193 tests, after the pre-deployment fixes) to 95.2% (205 tests, after the hardening items; the real-process shutdown test is skipped locally on Windows, so `server.js` is not counted as covered) | earlier measurements |
 | Suite runtime | about 2.2 s (0.5 s before accounts existed; password hashing is the slowest part) | "Duration" line in `npm test` output |
 | External network calls during tests | **0** (IGDB and Twitch are mocked or stubbed) | tests pass offline |
 | `npm audit` | **0 vulnerabilities** | `cd backend && npm audit` |
 
-Tests per file (Node): `limits.test.js` 40, `auth.test.js` 38, `lists.test.js` 32, `config.test.js` 12, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `errorHandling.test.js` 6, `igdbClient.test.js` 6, `library.test.js` 6, `stats.test.js` 6, `igdbQuery.test.js` 4, `abuseLimits.test.js` 3, `proxyChain.test.js` 3. C#: `CsvExportTests.cs` 19.
+Tests per file (Node): `limits.test.js` 40, `auth.test.js` 38, `lists.test.js` 32, `config.test.js` 12, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `shutdown.test.js` 7 (6 unit tests plus 1 real-process test that runs only on Linux and in CI), `errorHandling.test.js` 6, `igdbClient.test.js` 6, `library.test.js` 6, `stats.test.js` 6, `headers.test.js` 5, `igdbQuery.test.js` 4, `abuseLimits.test.js` 3, `proxyChain.test.js` 3. C#: `CsvExportTests.cs` 19.
 
 Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the new code has a few defensive branches (a race on duplicate email, the migration branch for old databases) that tests do not trigger. Say that if asked; do not hide it.
 
 ### Size of the codebase (non-blank lines, excludes dependencies, build output, lockfiles)
 | Area | Lines |
 |---|---|
-| Backend source (Node/Express, JavaScript) | 773 |
+| Backend source (Node/Express, JavaScript) | 808 |
 | Backend scripts | 13 |
-| Backend tests | 1369 (about 1.8 lines of test per line of source) |
+| Backend tests | 1496 (about 1.9 lines of test per line of source) |
 | Frontend JS/JSX (React) | 967 |
 | Frontend CSS | 894 |
-| C# export service | 89 (Program.cs 50, CsvExport.cs 39; was 71 lines. It grew because it now has proper CSV quoting and typed models; the database and session code is gone) |
+| C# export service | 94 (Program.cs 55, CsvExport.cs 39) |
 | C# tests | 74 |
 | TypeScript report CLI | 99 |
 | Docker + compose + nginx config | 107 |
@@ -83,7 +88,7 @@ Counts include comments. They are a rough size indicator, not a quality measure.
 ### Docker (measured 2026-10-08 on Docker Desktop 4.94 / engine 29.8.2, Windows 11, 30 GB RAM host)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Final image sizes | API **355 MB**, C# export **340 MB** (was 392 MB before the export service stopped using SQLite), web (nginx) **94 MB**; **789 MB** total | `docker images` |
+| Final image sizes | API **355 MB**, C# export **340 MB**, web (nginx) **94 MB**; **789 MB** total (unchanged by the hardening work; re-measured 2026-10-12) | `docker images` |
 | Size if shipped single-stage (builder stage image) | API 1.68 GB, C# 1.54 GB, web 1.8 GB | `docker build --target deps ./backend`, `--target build ./frontend`, `--target build ./export-service`, then `docker images` |
 | Reduction from multi-stage builds | API **78.9%**, C# **73.8%** (1.3 GB builder stage to 340 MB; builder re-measured after the change), web **94.8%** (1 - final/builder) | computed from the rows above; builder sizes from `docker build --target ...` |
 | First build | 37 s (a failed earlier attempt had already pulled some base layers, so this is not a true cold start) | `docker compose build` |
@@ -111,7 +116,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Second run (after bumping actions and pinning `ubuntu-24.04`, commit `b265060`) | All 5 passed again; about **86 s** wall-clock; Docker 86 s, C# build 21 s, backend tests 18 s, TS typecheck 16 s, frontend 12 s. Node 20 and `ubuntu-latest` warnings no longer appear | `gh run list` |
 | Third run (IGDB protection, commit `6a5f4a3`) | All 5 passed; about **80 s** wall-clock; Docker 79 s, C# build 21 s, TS typecheck 17 s, backend tests 13 s, frontend 13 s. Only the 2 old lint annotations | `gh run list` |
 | Fourth run (export service as an API client, commit `2453adf`) | All 5 passed; about **72 s** wall-clock; Docker 71 s, C# build plus tests 25 s, TS typecheck 20 s, frontend 19 s, backend tests 15 s. The new C# test step ran on GitHub: **19 passed, 0 failed**. Node tests: 129 passed. Only the 2 old lint annotations | `gh run list` |
-| Runs measured | **4**. Wall-clock 88 s, 86 s, 80 s, 72 s: consistent and trending down, but four samples are still not a reliable average, and I have not measured why the Docker job got faster (it could be run-to-run variation) | see section 3 |
+| Fifth run (pre-deployment fixes, commit `a6f331f`) | All 5 passed; about **92 s** wall-clock; Docker 91 s, C# build plus tests 20 s, backend tests 19 s, TS typecheck 18 s, frontend 9 s. Node tests: **193 passed**; C# tests: **19 passed**. Only the 2 old lint annotations | `gh run list` |
+| Runs measured | **5**. Wall-clock 88 s, 86 s, 80 s, 72 s, 92 s. That is a spread of about 20 s, almost all of it in the Docker job (71 to 91 s). The earlier "trending down" reading was wrong; the variation looks like noise, and I have not measured what drives it | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -174,9 +180,9 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 18. **Fixed (2026-10-12):** behind Caddy then nginx, `TRUST_PROXY=1` made the API see every visitor as the proxy (demonstrated: `req.ip` was 172.18.0.5 at 1 hop and 203.0.113.7 at 2), so the per-IP limits were shared by the whole site. The hop count is now `TRUST_PROXY_HOPS`, validated at startup, and verified on the real containers (see the improvement log). **Deploy to-do:** it must equal the real number of proxies. Set it to 2 when Caddy is added in front of nginx; too high would let a visitor forge their address, too low recreates the lockout. Confirm on the first deploy.
 19. **Fixed (2026-10-12):** an async Express 4 handler that throws used to kill the process (demonstrated: exit code 1, no response afterwards). `/api/auth/register` and `/api/auth/login` are now wrapped so errors go to a global handler that returns a JSON 500 without internals. Details and tests are in the improvement log.
 20. **Fixed (2026-10-12):** no abuse limits on writes (300 list creations, 100 guest accounts and 90,000-character names were all accepted). Now: 50 lists per user, 2,000 games per list, name and notes length limits, a type check on every field, a per-IP write limit of 120 per minute, and a per-IP cap of 10 new guest sessions per hour. These numbers are my estimates and a shared network (a household or school) shares one IP's allowance, so tune them from real use.
-21. **Pre-deployment audit, should fix (found 2026-10-12):** no graceful shutdown (no SIGTERM handler, so `docker stop` waits about 10 seconds and then kills the process; the database is never closed explicitly), and the compose file has no `init: true`.
-22. **Pre-deployment audit, should fix (found 2026-10-12):** hardening gaps. The API sends `X-Powered-By: Express` and malformed JSON gets an HTML error page (measured: HTTP 400, `text/html`) instead of JSON. nginx has no security headers (Content-Security-Policy, nosniff, frame, referrer) and no gzip or cache headers (confirmed by grep of `nginx.conf`).
-23. **Pre-deployment audit, should fix (found 2026-10-12):** production Docker settings. No log rotation (Docker's default logs grow without limit on a small disk), no memory limits, and the base images use floating tags (`node:24`, `nginx:alpine`) so builds can change over time.
+21. **Fixed (2026-10-12):** the API ignored SIGTERM, so Docker force-killed it after 3,673 ms (exit 137) without closing the database. It now shuts down cleanly in 724 ms with exit 0 (details in the improvement log). I did not add `init: true` to compose, because the process now handles the signal itself.
+22. **Fixed (2026-10-12):** the API sent `X-Powered-By: Express` (now removed by helmet, which also adds its standard headers) and nginx had no security headers, no compression and no caching (all added; see the improvement log). Malformed JSON already gets a JSON error from the blocker fixes. **Still to do at deploy time:** HSTS (`Strict-Transport-Security`) belongs on the HTTPS layer, so it goes in the Caddy config.
+23. **Fixed (2026-10-12):** log rotation, memory ceilings, `no-new-privileges`, and base images pinned by digest, with Dependabot to propose updates. Watch for container OOM kills after launch (`docker inspect` shows `OOMKilled`), because the ceilings are sized from idle usage.
 24. **Pre-deployment audit, polish (found 2026-10-12):** the browser tab title is still `frontend`, unknown URLs render a blank page (no catch-all route), there is no React error boundary, and `README.md` is 11 lines and out of date (nothing on Docker, accounts, tests, CI or architecture).
 25. **Pre-deployment audit, needed before sharing publicly (found 2026-10-12):** no privacy note or terms page, no way to delete an account, no password reset or email verification, and IGDB's terms are unconfirmed. Backups are not set up yet either (a script and a schedule are part of the deploy work).
 
@@ -197,6 +203,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Your existing local library | Pre-accounts lists have no owner, so they are invisible until claimed. Backed up at `backend/backlog.pre-auth.bak` | Create your account, then run `cd backend && npm run claim-legacy -- you@example.com` |
 | CSRF protection | Relies on `SameSite=Lax` cookies, a strict CORS origin allowlist and JSON-only bodies; no CSRF tokens | Get a security review before relying on this publicly |
 | Frontend automated tests | The account UI was verified by driving a browser by hand, not by automated UI tests | Add component or end-to-end tests |
+| Real-process shutdown test in CI | It runs only on Linux, so it was skipped on this Windows machine. The same behaviour was verified on the real container (exit 0 in 724 ms) | The next CI run on GitHub should show it passing; if it fails, fix it |
+| Content-Security-Policy upkeep | The policy was verified against the current pages only. It is strict (`script-src 'self'`, `style-src 'self'`, images only from this site and `images.igdb.com`), so a future inline script or style, or a new image host, will be blocked | Update `frontend/security-headers.conf` when the app starts using something new, and check the browser console after each frontend change |
 | Tuning of the new limits | 10 new guests per hour per IP, 120 writes per minute per IP, 50 lists, 2,000 games and the field lengths are my estimates | Watch for legitimate users hitting 429 or 409 after launch and adjust in `limits.js` and `writeLimiters.js` |
 | IGDB limits and tuning | The 4 requests per second and 8 open requests limits come from secondary summaries, not IGDB's own page. The 60 requests per minute per IP and 300 ms spacing are my estimates, not tuned from real traffic | Confirm IGDB's limits in its docs, then review the numbers against real usage after launch (watch for 429s in the logs) |
 | IGDB terms confirmed in writing | I could only read secondary summaries, not api-docs.igdb.com. Commercial-use, caching and attribution rules are unverified | Read the official docs, and email or ask IGDB support for confirmation if the site might ever carry ads or payments |
@@ -370,3 +378,28 @@ The API is the only thing that touches the data and the only thing that understa
 - *How do you choose limits like 50 lists?* They are estimates sized for a real person, logged as assumptions to tune from real traffic. The point is that a limit exists and is tested, not the exact number.
 - *Why not rate limit by user instead of by IP?* Guests are free to create, so a bot would just make new ones. IP is the only identity available before a session exists, and per-user limits (the list and game caps) cover the rest.
 - *What is the downside of per-IP limits?* People sharing a network (a household, a school) share one allowance, which is why the numbers need tuning after launch.
+
+### 5.10 Production hardening: shutdown, headers, caching and container settings
+
+**Graceful shutdown.** `docker stop` sends SIGTERM and, after a grace period, SIGKILL. A Node process running as the container's main process ignores SIGTERM unless it installs a handler, so the API was always killed (exit 137). Now the handler stops accepting new connections, waits for in-flight requests, closes the database (which also flushes SQLite's write-ahead log), and exits 0. A watchdog forces exit after 8 seconds so one stuck connection cannot hang it. The logic lives in a small function that takes the server, database and `exit` as parameters, which is why it can be unit tested with fakes.
+
+**Security headers, and what each one does**
+- `Content-Security-Policy` is a whitelist of where the page may load scripts, styles and images from. It is the main defence against cross-site scripting: even if an attacker injects a script tag, the browser refuses to run it. Ours allows only this site's own files and cover images from `images.igdb.com`.
+- `X-Content-Type-Options: nosniff` stops the browser guessing that a file is something else (for example running an uploaded text file as a script).
+- `X-Frame-Options: DENY` (and `frame-ancestors 'none'`) stops other sites embedding yours in a hidden frame (clickjacking).
+- `Referrer-Policy` limits how much of your URL is sent to other sites when someone clicks away.
+- Removing `X-Powered-By` and the nginx version is minor hiding, not real protection, but it removes free information for scanners.
+- Strict-Transport-Security (HSTS) tells browsers to use only HTTPS. It is sent by the HTTPS layer, so it goes in the Caddy config at deploy time.
+
+**An nginx gotcha worth knowing.** nginx passes `add_header` down from the server block to a location only if that location sets no `add_header` of its own. The caching location sets one, so the security headers would have silently vanished there. The fix is a shared snippet file that every static location includes. I only found this class of problem because I checked the real response headers on several paths.
+
+**Caching strategy.** Build tools put a content hash in each file name (`index-BTxV8_Pn.js`), so a changed file always has a new name. That means a file with that name can be cached for a year (`immutable`), while `index.html`, which refers to those names, must be re-checked every time (`no-cache`) so a deploy is picked up immediately. A repeat visit then costs one tiny conditional request that returns 304.
+
+**Compression.** nginx's default gzip level is its lowest. Level 6 is the usual balance of CPU and size: 92 KB became 78 KB for the JS bundle. Tiny responses are not compressed because the overhead is not worth it.
+
+**Container settings.** Log rotation stops container logs filling a small disk. A memory ceiling means a runaway process is killed instead of taking the whole server down; it is a ceiling, not a reservation, so idle containers do not use it. `no-new-privileges` stops a compromised process gaining extra rights. Pinning base images by digest makes builds reproducible, and Dependabot proposes updates so the pins do not go stale.
+
+**Likely questions**
+- *Why is your CSP so strict, and how do you know it does not break the app?* The built page has no inline scripts or styles, so a strict policy is possible. I loaded the app through nginx in a browser, checked the console for violations, and used deliberate negative controls (an off-site image and an inline script) to prove the policy blocks things.
+- *Pinning by digest means you stop getting security patches. How do you handle that?* Dependabot opens weekly pull requests that bump the digest, and CI tests each one before it merges.
+- *What would you add next?* HSTS at the HTTPS layer, a Content-Security-Policy report endpoint to learn about violations in production, and dependency scanning in CI.
