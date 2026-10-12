@@ -106,6 +106,7 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
           <input
             type="number"
             min="0"
+            max="100000"
             step="0.5"
             value={hoursPlayed}
             onChange={(e) => setHoursPlayed(e.target.value)}
@@ -115,7 +116,12 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
 
         <label className="field-label">
           Notes:
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => handleSave()} />
+          <textarea
+            value={notes}
+            maxLength={2000}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => handleSave()}
+          />
         </label>
 
         {saving && <p className="status-ok">Saving...</p>}

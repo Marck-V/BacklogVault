@@ -4,8 +4,9 @@ services:
     environment:
       IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see .env.example)}
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
-      # nginx is one proxy hop in front of the API, so rate limiting must read the forwarded client IP
-      TRUST_PROXY: "1"
+      # Number of proxies in front of the API, so rate limits see the real visitor IP. nginx alone is 1 (the default);
+      # set TRUST_PROXY_HOPS=2 in .env when Caddy sits in front of nginx
+      TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}
       # Browsers only keep Secure cookies over HTTPS (plus localhost); set to "true" once the site is served over HTTPS
       COOKIE_SECURE: "false"
     volumes:

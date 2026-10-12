@@ -36,6 +36,9 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 | 2026-10-11 | C# test coverage | 0 C# tests, and CI did not run any | 19 C# tests (quoting, formula neutralisation, record building), run in CI | `dotnet test export-service.tests` |
 | 2026-10-11 | Export image size | 392 MB | 340 MB (**13% smaller**) because the SQLite native library is gone | `docker images` |
 | 2026-10-11 | Export when the API is down | not applicable (it read the file directly) | a new dependency, handled gracefully: signed-in export returns a clean **502**, a missing cookie still gets **401**, health stays ok, and it recovers by itself | stopped the API container and requested the export |
+| 2026-10-12 | Per-IP limits behind two proxies (Caddy then nginx) | with `TRUST_PROXY=1` the API saw the proxy's address for every visitor (172.18.0.5 instead of 203.0.113.7), so the per-IP limits were shared by the whole site: in the real containers, after visitor A used up the login allowance, a different visitor B was refused too (**429**) | the hop count is configurable (`TRUST_PROXY_HOPS`) and validated at startup; with 2 hops visitor A is limited at the 11th attempt (429) and visitor B is still served (**401**); a forged address does not buy extra attempts when the count matches the real chain | both settings run on the real containers; `proxyChain.test.js` (3), `config.test.js` (12) |
+| 2026-10-12 | Crash on an error inside an async handler | an async Express 4 handler that throws made the process exit with code 1 and nothing answered afterwards (demonstrated); register and login had no protection and there was no global error handler; malformed JSON got an HTML error page | errors reach one JSON handler: a 500 with `Something went wrong` (no internals), the app keeps serving, malformed JSON is a JSON 400, an oversized body a JSON 413, an unknown API route a JSON 404 | `errorHandling.test.js` (6); I also confirmed the test run fails on the original bug pattern, so the tests would catch a regression |
+| 2026-10-12 | Abuse limits on writes | **300 of 300** list creations from one client accepted; **100 anonymous clients created 100 guest accounts**; **90,000-character** list and game names accepted (HTTP 201) | through nginx on the real containers: 300 attempts stored **50** (70 refused by the cap, 180 rate limited); 100 anonymous clients created **10** guest accounts (90 refused); 90,000-character names get **400** with a clear message; normal input still works | same scenarios before and after; `abuseLimits.test.js` (3), `limits.test.js` (40) |
 
 **Planned measurements for deployment** (record the before and after of each when we get there): time from `git push` to live, response time (median and 95th percentile) from outside the server, uptime over the first weeks, monthly cost, backup restore time, TLS grade, and security headers.
 
@@ -46,28 +49,28 @@ One row per improvement, newest last. Every row needs a **before**, an **after**
 ### Testing (backend)
 | Metric | Value | How to reproduce |
 |---|---|---|
-| Automated tests | **129 Node tests + 19 C# tests, 0 failing** (Node: 10 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
+| Automated tests | **193 Node tests + 19 C# tests, 0 failing** (Node: 15 files) | `cd backend && npm test`, and `dotnet test export-service.tests` |
 | Tests before this work | **0** | (none existed) |
-| Line coverage (Node) | **95.3%** (302/317) | `cd backend && npm run test:coverage` |
-| Statement coverage | 95.1% | same |
-| Branch coverage | 89.9% | same |
-| Function coverage | 96.3% | same |
-| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) | earlier measurements |
+| Line coverage (Node) | **95.8%** (341/356) | `cd backend && npm run test:coverage` |
+| Statement coverage | 95.4% | same |
+| Branch coverage | 91.1% | same |
+| Function coverage | 96.9% | same |
+| Coverage history | 84.7% lines (52 tests) to 95.6% (58 tests, after testing the IGDB client) to 94.8% (106 tests, after adding accounts) to 95.2% (123 tests, after IGDB protection) to 95.3% (129 tests, after the library route) to 95.8% (193 tests, after the pre-deployment fixes) | earlier measurements |
 | Suite runtime | about 2.2 s (0.5 s before accounts existed; password hashing is the slowest part) | "Duration" line in `npm test` output |
 | External network calls during tests | **0** (IGDB and Twitch are mocked or stubbed) | tests pass offline |
 | `npm audit` | **0 vulnerabilities** | `cd backend && npm audit` |
 
-Tests per file (Node): `auth.test.js` 38, `lists.test.js` 32, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `igdbClient.test.js` 6, `stats.test.js` 6, `library.test.js` 6, `igdbQuery.test.js` 4. C#: `CsvExportTests.cs` 19.
+Tests per file (Node): `limits.test.js` 40, `auth.test.js` 38, `lists.test.js` 32, `config.test.js` 12, `games.test.js` 11, `authUnit.test.js` 10, `igdbLimiter.test.js` 9, `igdbThrottle.test.js` 7, `errorHandling.test.js` 6, `igdbClient.test.js` 6, `library.test.js` 6, `stats.test.js` 6, `igdbQuery.test.js` 4, `abuseLimits.test.js` 3, `proxyChain.test.js` 3. C#: `CsvExportTests.cs` 19.
 
 Coverage dipped slightly (95.6% to 94.8%) when accounts were added because the new code has a few defensive branches (a race on duplicate email, the migration branch for old databases) that tests do not trigger. Say that if asked; do not hide it.
 
 ### Size of the codebase (non-blank lines, excludes dependencies, build output, lockfiles)
 | Area | Lines |
 |---|---|
-| Backend source (Node/Express, JavaScript) | 677 |
+| Backend source (Node/Express, JavaScript) | 773 |
 | Backend scripts | 13 |
-| Backend tests | 1029 (about 1.5 lines of test per line of source) |
-| Frontend JS/JSX (React) | 960 |
+| Backend tests | 1369 (about 1.8 lines of test per line of source) |
+| Frontend JS/JSX (React) | 967 |
 | Frontend CSS | 894 |
 | C# export service | 89 (Program.cs 50, CsvExport.cs 39; was 71 lines. It grew because it now has proper CSV quoting and typed models; the database and session code is gone) |
 | C# tests | 74 |
@@ -107,7 +110,8 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Test run as CI saw it | 7 files passed, 3.98 s | the "Run npm test" step log |
 | Second run (after bumping actions and pinning `ubuntu-24.04`, commit `b265060`) | All 5 passed again; about **86 s** wall-clock; Docker 86 s, C# build 21 s, backend tests 18 s, TS typecheck 16 s, frontend 12 s. Node 20 and `ubuntu-latest` warnings no longer appear | `gh run list` |
 | Third run (IGDB protection, commit `6a5f4a3`) | All 5 passed; about **80 s** wall-clock; Docker 79 s, C# build 21 s, TS typecheck 17 s, backend tests 13 s, frontend 13 s. Only the 2 old lint annotations | `gh run list` |
-| Runs measured | **3**. Wall-clock 88 s, 86 s, 80 s: consistent, but three samples are still not a reliable average | see section 3 |
+| Fourth run (export service as an API client, commit `2453adf`) | All 5 passed; about **72 s** wall-clock; Docker 71 s, C# build plus tests 25 s, TS typecheck 20 s, frontend 19 s, backend tests 15 s. The new C# test step ran on GitHub: **19 passed, 0 failed**. Node tests: 129 passed. Only the 2 old lint annotations | `gh run list` |
+| Runs measured | **4**. Wall-clock 88 s, 86 s, 80 s, 72 s: consistent and trending down, but four samples are still not a reliable average, and I have not measured why the Docker job got faster (it could be run-to-run variation) | see section 3 |
 
 ### Accounts and security (verified 2026-10-11)
 | Property | Result | How it was verified |
@@ -127,7 +131,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 ### Architecture facts
 - **17** REST routes in the Node API (4 of them auth routes, 1 the library route the export uses), **2** in the C# service.
 - **3 languages:** JavaScript (API and UI), C# (export service), TypeScript (report CLI).
-- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 passed on their first GitHub run (see the CI table above); the C# test step is new and has not run on GitHub yet.
+- **5 CI jobs** run on every push: backend tests, frontend lint and build, TS typecheck, C# build and its 19 tests, Docker stack smoke test. All 5 have passed on GitHub on every run (see the CI table above), including the C# test step (19 tests).
 - Verified locally: lint has 0 errors and 2 warnings; `tsc --noEmit` is clean; `dotnet build` has 0 errors.
 
 ---
@@ -167,6 +171,14 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 15. **Partly addressed (2026-10-11):** an IGDB attribution now appears in the footer. Still open: I could not read IGDB's official terms, so whether the site counts as non-commercial, and what the rules are on caching or storing IGDB data, are unconfirmed. Confirm at api-docs.igdb.com before launch and before building the planned IGDB cache.
 16. **My own slip, logged for honesty (2026-10-11):** while checking that `app.js` still loaded, I ran a command that imported it, and importing opens the real `backend/backlog.db`, so the account migration was applied to your real database earlier than planned. It is the same additive migration the server runs on first start. I checked afterwards: all 4 game rows are identical to the pre-migration backup, there are 0 users and 0 sessions, and your one list is still unowned. Lesson: set `DB_PATH` to a throwaway database for any ad-hoc script that touches the app.
 17. **Found by measuring before the rewrite (2026-10-11), fixed:** the old export corrupted awkward game names (see the CSV correctness row in the improvement log) and shared a database file between two services, which tied them to one machine. Both fixed by making the C# service an API client with proper CSV quoting. New trade-off: export now depends on the API being up (handled with a 502). I had said the service would get smaller; it actually grew from 71 to 89 lines, because correct CSV handling takes code. What shrank is the risky part (duplicated session logic, database access).
+18. **Fixed (2026-10-12):** behind Caddy then nginx, `TRUST_PROXY=1` made the API see every visitor as the proxy (demonstrated: `req.ip` was 172.18.0.5 at 1 hop and 203.0.113.7 at 2), so the per-IP limits were shared by the whole site. The hop count is now `TRUST_PROXY_HOPS`, validated at startup, and verified on the real containers (see the improvement log). **Deploy to-do:** it must equal the real number of proxies. Set it to 2 when Caddy is added in front of nginx; too high would let a visitor forge their address, too low recreates the lockout. Confirm on the first deploy.
+19. **Fixed (2026-10-12):** an async Express 4 handler that throws used to kill the process (demonstrated: exit code 1, no response afterwards). `/api/auth/register` and `/api/auth/login` are now wrapped so errors go to a global handler that returns a JSON 500 without internals. Details and tests are in the improvement log.
+20. **Fixed (2026-10-12):** no abuse limits on writes (300 list creations, 100 guest accounts and 90,000-character names were all accepted). Now: 50 lists per user, 2,000 games per list, name and notes length limits, a type check on every field, a per-IP write limit of 120 per minute, and a per-IP cap of 10 new guest sessions per hour. These numbers are my estimates and a shared network (a household or school) shares one IP's allowance, so tune them from real use.
+21. **Pre-deployment audit, should fix (found 2026-10-12):** no graceful shutdown (no SIGTERM handler, so `docker stop` waits about 10 seconds and then kills the process; the database is never closed explicitly), and the compose file has no `init: true`.
+22. **Pre-deployment audit, should fix (found 2026-10-12):** hardening gaps. The API sends `X-Powered-By: Express` and malformed JSON gets an HTML error page (measured: HTTP 400, `text/html`) instead of JSON. nginx has no security headers (Content-Security-Policy, nosniff, frame, referrer) and no gzip or cache headers (confirmed by grep of `nginx.conf`).
+23. **Pre-deployment audit, should fix (found 2026-10-12):** production Docker settings. No log rotation (Docker's default logs grow without limit on a small disk), no memory limits, and the base images use floating tags (`node:24`, `nginx:alpine`) so builds can change over time.
+24. **Pre-deployment audit, polish (found 2026-10-12):** the browser tab title is still `frontend`, unknown URLs render a blank page (no catch-all route), there is no React error boundary, and `README.md` is 11 lines and out of date (nothing on Docker, accounts, tests, CI or architecture).
+25. **Pre-deployment audit, needed before sharing publicly (found 2026-10-12):** no privacy note or terms page, no way to delete an account, no password reset or email verification, and IGDB's terms are unconfirmed. Backups are not set up yet either (a script and a schedule are part of the deploy work).
 
 ---
 
@@ -185,6 +197,7 @@ Sizes are Docker's reported disk usage (decimal MB/GB). Single snapshots, not av
 | Your existing local library | Pre-accounts lists have no owner, so they are invisible until claimed. Backed up at `backend/backlog.pre-auth.bak` | Create your account, then run `cd backend && npm run claim-legacy -- you@example.com` |
 | CSRF protection | Relies on `SameSite=Lax` cookies, a strict CORS origin allowlist and JSON-only bodies; no CSRF tokens | Get a security review before relying on this publicly |
 | Frontend automated tests | The account UI was verified by driving a browser by hand, not by automated UI tests | Add component or end-to-end tests |
+| Tuning of the new limits | 10 new guests per hour per IP, 120 writes per minute per IP, 50 lists, 2,000 games and the field lengths are my estimates | Watch for legitimate users hitting 429 or 409 after launch and adjust in `limits.js` and `writeLimiters.js` |
 | IGDB limits and tuning | The 4 requests per second and 8 open requests limits come from secondary summaries, not IGDB's own page. The 60 requests per minute per IP and 300 ms spacing are my estimates, not tuned from real traffic | Confirm IGDB's limits in its docs, then review the numbers against real usage after launch (watch for 429s in the logs) |
 | IGDB terms confirmed in writing | I could only read secondary summaries, not api-docs.igdb.com. Commercial-use, caching and attribution rules are unverified | Read the official docs, and email or ask IGDB support for confirmation if the site might ever carry ads or payments |
 | Mutation check on the tests | I tried to break the escaping and date logic on purpose to confirm the tests fail. The tooling blocked that run, I reverted the edits, and never completed it | Manual: remove `escapeIgdbString(...)` in `app.js`, run `npm test`, expect failures, then put it back |
@@ -344,3 +357,16 @@ The API is the only thing that touches the data and the only thing that understa
 - *Why not just do the export in Node?* It would be about 15 lines. The C# service is there to show a second language and a clean service boundary; the design lesson (depend on contracts, not databases) is what carries over.
 - *Why forward the cookie instead of a service-to-service token?* It is simplest and keeps one login system. For a larger system, a dedicated internal credential would limit what the export service can do.
 - *What if the API is slow?* The call has a 10 second timeout and returns a 502 instead of hanging.
+
+### 5.9 Pre-deployment hardening: three bugs that only show up in production
+
+**1. The proxy chain.** A rate limiter needs to know who the visitor is. Behind a reverse proxy the connection comes from the proxy, so the visitor's address travels in the `X-Forwarded-For` header, and each proxy appends the address it saw. Express's `trust proxy` setting says how many proxies to believe. With Caddy then nginx in front, the API has to skip two hops to reach the visitor. At 1 hop it stopped at Caddy, so every visitor looked like the same address and one person's failed logins locked everyone out. The opposite mistake is also dangerous: trust too many hops and a visitor can invent their own address in the header and dodge every limit. The number has to match reality, which is why it is a validated setting and not a guess.
+
+**2. Async errors in Express 4.** Express 4 does not catch a rejected promise from an `async` handler, so the rejection goes unhandled and modern Node exits. A one-line wrapper (`asyncHandler`) forwards the error to Express's error handling instead, and one global handler turns every failure into a JSON response that never leaks internals. The tests prove it both ways: a failing handler returns a 500 and the app keeps serving, and the test runner itself fails if an unhandled rejection ever escapes.
+
+**3. Unbounded writes.** Anything that stores user input needs three kinds of bound: how big one value can be (field lengths), how many one account can hold (50 lists, 2,000 games), and how fast one address can create things (per-IP rate limits, with a stricter one for creating new guest accounts). Without them a bot can fill a small server's disk with junk. Validation also checks types, not just presence (an `igdb_id` of `"1"` or a negative number is refused).
+
+**Likely questions**
+- *How do you choose limits like 50 lists?* They are estimates sized for a real person, logged as assumptions to tune from real traffic. The point is that a limit exists and is tested, not the exact number.
+- *Why not rate limit by user instead of by IP?* Guests are free to create, so a bot would just make new ones. IP is the only identity available before a session exists, and per-user limits (the list and game caps) cover the rest.
+- *What is the downside of per-IP limits?* People sharing a network (a household, a school) share one allowance, which is why the numbers need tuning after launch.

@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import { igdbRequest } from "./igdbClient.js";
 import { escapeIgdbString } from "./igdbQuery.js";
 import { createIgdbLimiter } from "./igdbLimiter.js";
+import { trustProxyHops } from "./config.js";
+import { createWriteLimiter } from "./writeLimiters.js";
 import { attachUser } from "./auth.js";
 import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
@@ -11,8 +13,9 @@ import db from "./db.js";
 
 const app = express();
 
-// Behind nginx, trust one proxy hop so rate limiting sees the real client IP.
-if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY));
+// Tell Express how many proxies sit in front, so rate limiting sees the real client IP (see config.js).
+const proxyHops = trustProxyHops();
+if (proxyHops > 0) app.set("trust proxy", proxyHops);
 
 // Credentialed CORS cannot use "*": only the listed origins may send the session cookie cross-origin (local dev).
 app.use(
@@ -180,6 +183,20 @@ app.get("/api/library", (req, res) => {
 });
 
 app.use("/api/auth", authRouter);
-app.use("/api/lists", listsRouter);
+app.use("/api/lists", createWriteLimiter(), listsRouter);
+
+app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
+
+// Last stop for errors: always JSON, never a stack trace or internal message.
+// Express only treats a function with exactly four parameters as an error handler, so `next` must stay.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON in request body" });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "Request body too large" });
+  const status = err.status ?? err.statusCode;
+  if (status >= 400 && status < 500) return res.status(status).json({ error: "Bad request" });
+  console.error(err);
+  res.status(500).json({ error: "Something went wrong" });
+});
 
 export default app;
