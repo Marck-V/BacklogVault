@@ -20,6 +20,9 @@ open it anywhere.
 - **Guest-first accounts:** guests are created on the first save and upgraded in place when they register, so the
   library carries over. Logging in on another device can merge a guest's lists in.
 - **CSV export** of your whole library, produced by a separate C# service.
+- **Steam import** (optional, needs a Steam Web API key): paste your Steam profile and your owned games are added to a
+  list as Backlog with your hours played. Games are matched to IGDB by Steam app ID, and anything IGDB does not list
+  (soundtracks, tools, demos) is reported instead of failing. Re-running it is safe.
 
 ## How it fits together
 
@@ -85,6 +88,8 @@ cd export-service && dotnet run
 | `COOKIE_SECURE` | API | `false` | Set `true` when served over HTTPS |
 | `CORS_ORIGIN` | API | `http://localhost:5173` | Comma-separated origins allowed to call the API (local development only) |
 | `AUTH_RATE_LIMIT_MAX` | API | `10` per 15 min | Login and register attempts per IP |
+| `STEAM_API_KEY` | API | empty (feature off) | [Steam Web API key](https://steamcommunity.com/dev/apikey); turns on the Steam import. Keep it on the server only |
+| `IMPORT_RATE_LIMIT` | API | `5` per hour | Steam imports per IP |
 | `IGDB_ROUTE_RATE_LIMIT` | API | `60` per min | IGDB-backed requests per IP |
 | `IGDB_MIN_INTERVAL_MS` | API | `300` | Minimum gap between calls to IGDB, site-wide |
 | `WRITE_RATE_LIMIT`, `GUEST_RATE_LIMIT` | API | `120` per min, `10` per hour | Changes per IP, new guest sessions per IP |
@@ -126,6 +131,10 @@ users cannot see each other's data through both the API and the CSV export.
 - **IGDB terms:** IGDB is free for non-commercial use. I could not read its official terms, so what it allows for
   caching and commercial use is unconfirmed. Check [api-docs.igdb.com](https://api-docs.igdb.com/) before launching
   anything beyond a personal project.
+- **Steam import is not tied to a Steam sign-in.** Anyone can type in any public profile, but Steam's API terms say
+  data should be retrieved as requested by the user it belongs to, and require a privacy policy that says what is
+  stored. Verifying ownership with Steam's OpenID sign-in, and writing that policy, are needed before a public launch.
+  Only games, names and hours are stored; the profile itself is not.
 - **SQLite means one API instance.** Scaling out would mean moving to Postgres.
 - **Local data from before accounts existed** has no owner. `cd backend && npm run claim-legacy -- you@example.com`
   assigns it to an account.

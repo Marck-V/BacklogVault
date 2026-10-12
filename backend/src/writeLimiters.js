@@ -24,3 +24,12 @@ export function createGuestLimiter(limit = Number(process.env.GUEST_RATE_LIMIT ?
     skip: (req) => Boolean(req.user),
   });
 }
+
+// Per-IP cap on Steam imports. Each one spends Steam and IGDB quota, so it is much stricter than ordinary writes.
+export function createImportLimiter(limit = Number(process.env.IMPORT_RATE_LIMIT ?? 5)) {
+  return limiter({
+    windowMs: 60 * 60 * 1000,
+    limit,
+    message: "You have started several imports recently. Please try again later.",
+  });
+}

@@ -2,15 +2,13 @@ import express from "express";
 import db from "./db.js";
 import { ensureUser } from "./auth.js";
 import { LIMITS } from "./limits.js";
+import { findOwnedList } from "./ownership.js";
 import { createGuestLimiter } from "./writeLimiters.js";
 
 const router = express.Router();
 
 // Every list route goes through this: a list you do not own looks exactly like a list that does not exist.
-function ownedList(req) {
-  if (!req.user) return undefined;
-  return db.prepare("SELECT * FROM lists WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
-}
+const ownedList = (req) => findOwnedList(req.user?.id, req.params.id);
 
 router.get("/", (req, res) => {
   if (!req.user) return res.json([]);

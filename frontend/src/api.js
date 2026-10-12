@@ -90,3 +90,15 @@ export function loginAccount(email, password, mergeGuestData) {
 export function logoutAccount() {
   return request('/api/auth/logout', { method: 'POST' })
 }
+
+export function getSteamImportStatus() {
+  return request('/api/import/steam/status')
+}
+
+export function importSteamLibrary(listId, steam) {
+  return request('/api/import/steam', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ listId: Number(listId), steam }),
+  })
+}

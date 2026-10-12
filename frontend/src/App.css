@@ -947,3 +947,54 @@ button:disabled {
   color: var(--blue);
   font-weight: 600;
 }
+
+/* Steam import */
+
+.steam-import {
+  margin-top: 2rem;
+  padding: 1.25rem 1.4rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--card);
+  text-align: left;
+}
+
+.steam-import h2 {
+  margin: 0 0 0.5rem;
+}
+
+.steam-import-help {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.steam-import form {
+  margin-bottom: 0.5rem;
+}
+
+.steam-import-summary {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.steam-import-summary p {
+  margin: 0 0 0.4rem;
+}
+
+.steam-import-summary details {
+  margin-top: 0.6rem;
+}
+
+.steam-import-summary summary {
+  cursor: pointer;
+  color: var(--blue);
+}
+
+.steam-import-summary ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+  max-height: 12rem;
+  overflow-y: auto;
+}

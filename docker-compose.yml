@@ -11,6 +11,8 @@ services:
     environment:
       IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see .env.example)}
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
+      # Optional: a Steam Web API key turns on the "Import from Steam" feature (leave empty to switch it off)
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
       # Number of proxies in front of the API, so rate limits see the real visitor IP. nginx alone is 1 (the default);
       # set TRUST_PROXY_HOPS=2 in .env when Caddy sits in front of nginx
       TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}
