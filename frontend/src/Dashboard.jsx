@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
+import { getTimeToBeatStats, getCurrentlyPlaying, getBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
+import { ChartPie, Gamepad2, RefreshCw } from 'lucide-react'
 
 function formatHours(seconds) {
   if (seconds == null) return '—'
@@ -27,11 +28,11 @@ const colorFor = (genre, index) => (genre.name === 'Other' ? OTHER_COLOR : GENRE
 const DONUT_RADIUS = 54
 const DONUT_LENGTH = 2 * Math.PI * DONUT_RADIUS
 
-function GenreDonut({ genres, gameCount }) {
+function GenreDonut({ genres, gameCount, label }) {
   const total = genres.reduce((sum, genre) => sum + genre.count, 0)
   let offset = 0
   return (
-    <svg className="genre-donut" viewBox="0 0 140 140" role="img" aria-label="Your library by genre">
+    <svg className="genre-donut" viewBox="0 0 140 140" role="img" aria-label={label}>
       <circle cx="70" cy="70" r={DONUT_RADIUS} className="genre-donut-track" />
       {genres.map((genre, index) => {
         const length = (genre.count / total) * DONUT_LENGTH
@@ -60,41 +61,89 @@ function GenreDonut({ genres, gameCount }) {
   )
 }
 
-function GenrePanel({ breakdown }) {
+// What each tab of the breakdown panel shows. `what` fills the sentences, `without` says what a game with none is missing.
+const BREAKDOWN_VIEWS = [
+  { key: 'genres', label: 'Genres', what: 'genre', several: 'genres', without: 'no genre' },
+  { key: 'themes', label: 'Themes', what: 'theme', several: 'themes', without: 'no theme' },
+  { key: 'modes', label: 'Game modes', what: 'game mode', several: 'modes', without: 'no game mode' },
+]
+const VIEW_STORAGE_KEY = 'bv_breakdown_view'
+
+function readSavedView() {
+  try {
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY)
+    return BREAKDOWN_VIEWS.some((view) => view.key === saved) ? saved : 'genres'
+  } catch {
+    return 'genres'
+  }
+}
+
+function BreakdownPanel({ breakdown }) {
+  const [viewKey, setViewKey] = useState(readSavedView)
+  const view = BREAKDOWN_VIEWS.find((v) => v.key === viewKey)
+  const data = breakdown?.[viewKey]
+  const items = data?.items ?? []
+
+  function chooseView(key) {
+    setViewKey(key)
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, key)
+    } catch {
+      // Storage can be blocked; the panel then just starts on Genres next time.
+    }
+  }
+
   let body
   if (!breakdown) {
-    body = <p className="panel-empty">The genre chart couldn&apos;t be loaded.</p>
+    body = <p className="panel-empty">The library breakdown couldn&apos;t be loaded.</p>
   } else if (breakdown.igdb_unavailable) {
-    body = <p className="panel-empty">Genres are temporarily unavailable. Everything else is up to date.</p>
-  } else if (breakdown.genres.length === 0) {
-    body = <p className="panel-empty">No genre information for your games yet.</p>
+    body = <p className="panel-empty">This is temporarily unavailable. Everything else is up to date.</p>
+  } else if (items.length === 0) {
+    body = <p className="panel-empty">IGDB has no {view.what} information for your games yet.</p>
   } else {
     body = (
       <>
         <div className="genre-body">
-          <GenreDonut genres={breakdown.genres} gameCount={breakdown.game_count} />
+          <GenreDonut genres={items} gameCount={breakdown.game_count} label={`Your library by ${view.what}`} />
           <ul className="genre-legend">
-            {breakdown.genres.map((genre, index) => (
-              <li key={genre.name}>
-                <span className="genre-dot" style={{ background: colorFor(genre, index) }} />
-                <span className="genre-name">{genre.name}</span>
-                <span className="genre-count">{genre.count.toLocaleString()}</span>
+            {items.map((item, index) => (
+              <li key={item.name}>
+                <span className="genre-dot" style={{ background: colorFor(item, index) }} />
+                <span className="genre-name">{item.name}</span>
+                <span className="genre-count">{item.count.toLocaleString()}</span>
               </li>
             ))}
           </ul>
         </div>
         <p className="panel-footnote">
-          A game can have several genres, so it can count in more than one.
-          {breakdown.games_without_genre > 0 && ` ${breakdown.games_without_genre.toLocaleString()} have no genre on IGDB.`}
+          A game can have several {view.several}, so it can count in more than one.
+          {data.without > 0 && ` ${data.without.toLocaleString()} have ${view.without} on IGDB.`}
         </p>
       </>
     )
   }
+
   return (
-    <section className="panel" aria-labelledby="genre-title">
-      <h3 className="panel-title" id="genre-title">
-        Genres
-      </h3>
+    <section className="panel" aria-labelledby="breakdown-title">
+      <div className="panel-header">
+        <h3 className="panel-title" id="breakdown-title">
+          <ChartPie size={16} aria-hidden="true" />
+          <span>Library breakdown</span>
+        </h3>
+        <div className="view-toggle" role="group" aria-label="Break the library down by">
+          {BREAKDOWN_VIEWS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`view-toggle-btn ${viewKey === option.key ? 'active' : ''}`}
+              aria-pressed={viewKey === option.key}
+              onClick={() => chooseView(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {body}
     </section>
   )
@@ -105,7 +154,8 @@ function PlayingPanel({ playing }) {
   return (
     <section className="panel" aria-labelledby="playing-title">
       <h3 className="panel-title" id="playing-title">
-        {fromSteam ? 'Recently played on Steam' : 'Currently playing'}
+        <Gamepad2 size={16} aria-hidden="true" />
+        <span>{fromSteam ? 'Recently played on Steam' : 'Currently playing'}</span>
       </h3>
       {playing.games.length === 0 ? (
         <p className="panel-empty">
@@ -153,7 +203,7 @@ export default function Dashboard() {
     Promise.all([
       getTimeToBeatStats(),
       getCurrentlyPlaying().catch(() => ({ source: 'manual', games: [] })),
-      getGenreBreakdown().catch(() => null),
+      getBreakdown().catch(() => null),
     ])
       .then(([statsData, playingData, genreData]) => {
         setStats(statsData)
@@ -214,7 +264,8 @@ export default function Dashboard() {
             </span>
           )}
           <button type="button" className="refresh-btn" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : '↻ Refresh from Steam'}
+            <RefreshCw size={15} aria-hidden="true" className={refreshing ? 'spin' : undefined} />
+            {refreshing ? 'Refreshing…' : 'Refresh from Steam'}
           </button>
         </div>
       )}
@@ -283,7 +334,7 @@ export default function Dashboard() {
       )}
 
       <div className="dashboard-panels">
-        <GenrePanel breakdown={breakdown} />
+        <BreakdownPanel breakdown={breakdown} />
         <PlayingPanel playing={playing} />
       </div>
     </div>

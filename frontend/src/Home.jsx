@@ -5,6 +5,7 @@ import Dashboard from './Dashboard'
 import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './auth'
 import { usePageTitle } from './usePageTitle'
+import { Download, Plus, Trash2 } from 'lucide-react'
 
 const BANNER_DISMISSED_KEY = 'bv_guest_banner_dismissed'
 
@@ -106,7 +107,8 @@ export default function Home() {
           <h2 className="section-title">Your Lists</h2>
           {lists.length > 0 && (
             <a href={`${EXPORT_BASE}/export/csv`} className="export-btn" download="backlog.csv">
-              ↓ Export CSV
+              <Download size={14} aria-hidden="true" />
+              Export CSV
             </a>
           )}
         </div>
@@ -122,7 +124,10 @@ export default function Home() {
             placeholder="e.g. Weekend Backlog…"
             maxLength={100}
           />
-          <button type="submit">Create List</button>
+          <button type="submit">
+            <Plus size={16} aria-hidden="true" />
+            Create List
+          </button>
         </form>
 
         {error && <p className="error">{error}</p>}
@@ -135,6 +140,7 @@ export default function Home() {
             <li key={list.id}>
               <Link to={`/lists/${list.id}`}>{list.name}</Link>
               <button type="button" onClick={() => setPendingDelete(list)} aria-label={`Delete ${list.name}`}>
+                <Trash2 size={14} aria-hidden="true" />
                 Delete
               </button>
             </li>

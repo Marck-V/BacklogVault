@@ -157,7 +157,7 @@ describe('deleting a list', () => {
       '/api/lists': [{ id: 7, name: 'Weekend Shelf' }],
       '/api/stats/time-to-beat': { game_count: 0, completed_count: 0 },
       '/api/stats/currently-playing': { source: 'manual', steam_linked: false, games: [] },
-      '/api/stats/genres': { game_count: 0, genres: [], games_without_genre: 0 },
+      '/api/stats/breakdown': { game_count: 0, genres: { items: [], without: 0 }, themes: { items: [], without: 0 }, modes: { items: [], without: 0 } },
       'DELETE /api/lists/7': {},
     })
     render(
@@ -250,6 +250,18 @@ describe('the list page', () => {
     await within(dialog).findByText('Studio B')
   })
 
+  it('removes a game with a trash-can button that is named after the game and asks first', async () => {
+    renderList('/lists/1')
+    await screen.findByRole('heading', { name: 'Library' })
+    const trash = screen.getByRole('button', { name: 'Remove Bravo from this list' })
+    expect(trash.querySelector('svg').getAttribute('aria-hidden')).toBe('true')
+    expect(trash.textContent).toBe('')
+
+    fireEvent.click(trash)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull() // the click must not also open the game's details
+  })
+
   it('gives the search box a name and the right type', async () => {
     renderList('/lists/1')
     await screen.findByRole('heading', { name: 'Library' })
@@ -265,7 +277,7 @@ describe('page structure', () => {
       '/api/lists': [],
       '/api/stats/time-to-beat': { game_count: 0, completed_count: 0 },
       '/api/stats/currently-playing': { source: 'manual', steam_linked: false, games: [] },
-      '/api/stats/genres': { game_count: 0, genres: [], games_without_genre: 0 },
+      '/api/stats/breakdown': { game_count: 0, genres: { items: [], without: 0 }, themes: { items: [], without: 0 }, modes: { items: [], without: 0 } },
     })
     render(
       <MemoryRouter initialEntries={['/']}>

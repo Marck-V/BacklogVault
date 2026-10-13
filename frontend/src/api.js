@@ -79,8 +79,8 @@ export function setEstimateIncluded(igdbId, included) {
   })
 }
 
-export function getGenreBreakdown() {
-  return request('/api/stats/genres')
+export function getBreakdown() {
+  return request('/api/stats/breakdown')
 }
 
 export function refreshFromSteam() {

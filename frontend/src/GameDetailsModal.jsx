@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { getGameDetails, updateGameEntry } from './api'
 import Modal from './Modal'
 import { STATUSES } from './statuses'
+import { X } from 'lucide-react'
 
 function formatDate(unixSeconds) {
   if (!unixSeconds) return 'Unknown'
@@ -66,7 +67,7 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
   return (
     <Modal onClose={onClose} labelledBy={titleId}>
       <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-        &times;
+        <X size={16} aria-hidden="true" />
       </button>
       <h2 id={titleId} translate="no">
         {game.name}

@@ -10,7 +10,7 @@ const TOP_GENRES = 7;
 
 // Small in-memory caches. They only save calls to Steam and IGDB; losing them (a restart) costs nothing.
 const recentCache = new Map(); // userId -> { at, steamId, games }
-const genreCache = new Map(); // igdb id -> [genre names]
+const genreCache = new Map(); // igdb id -> { genres, themes, modes }, each a list of names
 
 function remember(cache, key, value) {
   if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
@@ -78,9 +78,23 @@ export async function currentlyPlaying(userId, { force = false } = {}) {
   return games.length ? { source: "steam", steam_linked: true, steam_failed: false, games } : manual();
 }
 
-// Counts the user's library by IGDB genre. A game with two genres counts once in each. Returns null when IGDB
-// cannot answer, so the dashboard can say so instead of showing a wrong chart.
-export async function genreBreakdown(userId) {
+const CATEGORIES = ["genres", "themes", "modes"];
+// IGDB's field for each category, so one query can fetch all three.
+const IGDB_FIELDS = { genres: "genres", themes: "themes", modes: "game_modes" };
+
+export const emptyBreakdown = () => ({
+  game_count: 0,
+  genres: { items: [], without: 0 },
+  themes: { items: [], without: 0 },
+  modes: { items: [], without: 0 },
+});
+
+const namesOf = (list) => (list ?? []).map((entry) => entry.name).filter(Boolean);
+
+// Counts the user's library by IGDB genre, theme and game mode (single player, co-op and so on). A game with two
+// genres counts once in each. "without" is how many games IGDB lists nothing for. Returns null when IGDB cannot
+// answer, so the dashboard can say so instead of showing a wrong chart.
+export async function libraryBreakdown(userId) {
   const ids = db
     .prepare("SELECT DISTINCT lg.igdb_id FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ?")
     .all(userId)
@@ -90,31 +104,33 @@ export async function genreBreakdown(userId) {
   try {
     for (let i = 0; i < missing.length; i += GENRE_QUERY_SIZE) {
       const batch = missing.slice(i, i + GENRE_QUERY_SIZE);
-      const rows = await igdbRequest(
-        "games",
-        `fields genres.name; where id = (${batch.join(",")}); limit ${GENRE_QUERY_SIZE};`
+      const fields = CATEGORIES.map((c) => `${IGDB_FIELDS[c]}.name`).join(",");
+      const rows = await igdbRequest("games", `fields ${fields}; where id = (${batch.join(",")}); limit ${GENRE_QUERY_SIZE};`);
+      const found = new Map(
+        rows.map((row) => [row.id, Object.fromEntries(CATEGORIES.map((c) => [c, namesOf(row[IGDB_FIELDS[c]])]))])
       );
-      const found = new Map(rows.map((row) => [row.id, (row.genres ?? []).map((g) => g.name).filter(Boolean)]));
-      // A game IGDB did not return is remembered as having no genres, so it is not asked for again on every visit.
-      for (const id of batch) remember(genreCache, id, found.get(id) ?? []);
+      // A game IGDB did not return is remembered as having nothing, so it is not asked for again on every visit.
+      for (const id of batch) remember(genreCache, id, found.get(id) ?? { genres: [], themes: [], modes: [] });
     }
   } catch (err) {
     console.error(err);
     return null;
   }
 
-  const counts = new Map();
-  let withoutGenre = 0;
-  for (const id of ids) {
-    const genres = genreCache.get(id) ?? [];
-    if (genres.length === 0) withoutGenre += 1;
-    for (const name of genres) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const result = { game_count: ids.length };
+  for (const category of CATEGORIES) {
+    const counts = new Map();
+    let without = 0;
+    for (const id of ids) {
+      const names = genreCache.get(id)?.[category] ?? [];
+      if (names.length === 0) without += 1;
+      for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const items = sorted.slice(0, TOP_GENRES).map(([name, count]) => ({ name, count }));
+    const otherCount = sorted.slice(TOP_GENRES).reduce((sum, [, count]) => sum + count, 0);
+    if (otherCount > 0) items.push({ name: "Other", count: otherCount });
+    result[category] = { items, without };
   }
-
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const top = sorted.slice(0, TOP_GENRES).map(([name, count]) => ({ name, count }));
-  const otherCount = sorted.slice(TOP_GENRES).reduce((sum, [, count]) => sum + count, 0);
-  if (otherCount > 0) top.push({ name: "Other", count: otherCount });
-
-  return { game_count: ids.length, genres: top, games_without_genre: withoutGenre };
+  return result;
 }

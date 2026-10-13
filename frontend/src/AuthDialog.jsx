@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { useAuth } from './auth'
 import Modal from './Modal'
+import { X } from 'lucide-react'
 
 export default function AuthDialog({ mode, onModeChange, onClose }) {
   const { user, register, login } = useAuth()
@@ -29,7 +30,7 @@ export default function AuthDialog({ mode, onModeChange, onClose }) {
   return (
     <Modal onClose={onClose} labelledBy={titleId} className="auth-dialog">
       <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-        &times;
+        <X size={16} aria-hidden="true" />
       </button>
       <h2 id={titleId}>{isSignUp ? 'Create Your Account' : 'Sign In'}</h2>
       <p className="auth-blurb">

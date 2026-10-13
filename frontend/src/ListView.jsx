@@ -11,6 +11,7 @@ import ConfirmDialog from './ConfirmDialog'
 import NotFound from './NotFound'
 import { usePageTitle } from './usePageTitle'
 import { SORT_OPTIONS, sortGames, formatPlaytime } from './sortGames'
+import { ArrowLeft, Check, LayoutGrid, List as ListIcon, SquareCheckBig, Trash2 } from 'lucide-react'
 
 const TABS = ['All', ...STATUSES]
 
@@ -164,7 +165,10 @@ export default function ListView() {
 
   return (
     <div>
-      <Link to="/">&larr; All lists</Link>
+      <Link to="/" className="back-link">
+        <ArrowLeft size={16} aria-hidden="true" />
+        All lists
+      </Link>
       <h1>{list.name}</h1>
 
       <div className="list-toolbar">
@@ -186,6 +190,7 @@ export default function ListView() {
               className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
               onClick={() => setParam('view', 'grid', 'grid')}
             >
+              <LayoutGrid size={15} aria-hidden="true" />
               Grid
             </button>
             <button
@@ -193,10 +198,12 @@ export default function ListView() {
               className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
               onClick={() => setParam('view', 'list', 'grid')}
             >
+              <ListIcon size={15} aria-hidden="true" />
               List
             </button>
           </div>
           <button type="button" className="btn-ghost select-toggle" aria-pressed={selecting} onClick={toggleSelecting}>
+            {selecting ? <Check size={15} aria-hidden="true" /> : <SquareCheckBig size={15} aria-hidden="true" />}
             {selecting ? 'Done' : 'Select'}
           </button>
         </div>
@@ -261,12 +268,15 @@ export default function ListView() {
                   />
                   <button
                     type="button"
+                    className="icon-btn danger"
+                    aria-label={`Remove ${game.name} from this list`}
+                    title="Remove from list"
                     onClick={(e) => {
                       e.stopPropagation()
                       setPendingRemove(game)
                     }}
                   >
-                    Remove
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
                 </div>
               )}
@@ -314,9 +324,12 @@ export default function ListView() {
                   />
                   <button
                     type="button"
+                    className="icon-btn danger"
+                    aria-label={`Remove ${game.name} from this list`}
+                    title="Remove from list"
                     onClick={() => setPendingRemove(game)}
                   >
-                    Remove
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
                 </div>
               )}
