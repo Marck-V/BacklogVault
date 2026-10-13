@@ -12,7 +12,7 @@ import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
 import importRouter from "./importRoutes.js";
 import db from "./db.js";
-import { currentlyPlaying, genreBreakdown } from "./dashboardData.js";
+import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.js";
 
 const app = express();
 
@@ -277,14 +277,14 @@ app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
   }
 });
 
-app.get("/api/stats/genres", igdbLimiter, async (req, res) => {
-  if (!req.user) return res.json({ game_count: 0, genres: [], games_without_genre: 0 });
+app.get("/api/stats/breakdown", igdbLimiter, async (req, res) => {
+  if (!req.user) return res.json(emptyBreakdown());
   try {
-    const breakdown = await genreBreakdown(req.user.id);
-    res.json(breakdown ?? { igdb_unavailable: true, game_count: null, genres: [], games_without_genre: 0 });
+    const breakdown = await libraryBreakdown(req.user.id);
+    res.json(breakdown ?? { igdb_unavailable: true, game_count: null });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to load the genre breakdown" });
+    res.status(500).json({ error: "Failed to load the library breakdown" });
   }
 });
 

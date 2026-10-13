@@ -29,8 +29,9 @@ function stubSteamRecent(games) {
   );
 }
 
-// IGDB's Steam catalogue for the external_games query, and genres for the games query.
-function stubIgdb({ catalogue = {}, genres = {} } = {}) {
+// IGDB's Steam catalogue for the external_games query, and genres / themes / game modes for the games query.
+function stubIgdb({ catalogue = {}, genres = {}, themes = {}, modes = {} } = {}) {
+  const named = (names = []) => names.map((name) => ({ name }));
   vi.mocked(igdbRequest).mockImplementation(async (endpoint, query) => {
     if (endpoint === "external_games") {
       return [...query.matchAll(/"(\d+)"/g)]
@@ -40,7 +41,9 @@ function stubIgdb({ catalogue = {}, genres = {} } = {}) {
     }
     if (endpoint === "games") {
       const ids = query.match(/\(([\d,]+)\)/)[1].split(",").map(Number);
-      return ids.filter((id) => id in genres).map((id) => ({ id, genres: genres[id].map((name) => ({ name })) }));
+      return ids
+        .filter((id) => id in genres || id in themes || id in modes)
+        .map((id) => ({ id, genres: named(genres[id]), themes: named(themes[id]), game_modes: named(modes[id]) }));
     }
     return [];
   });
@@ -215,10 +218,12 @@ describe("POST /api/steam/refresh", () => {
   });
 });
 
-describe("GET /api/stats/genres", () => {
+describe("GET /api/stats/breakdown", () => {
+  const emptyCategory = { items: [], without: 0 };
+
   it("returns an empty breakdown for a visitor without a session", async () => {
-    const res = await request(app).get("/api/stats/genres");
-    expect(res.body).toEqual({ game_count: 0, genres: [], games_without_genre: 0 });
+    const res = await request(app).get("/api/stats/breakdown");
+    expect(res.body).toEqual({ game_count: 0, genres: emptyCategory, themes: emptyCategory, modes: emptyCategory });
     expect(igdbRequest).not.toHaveBeenCalled();
   });
 
@@ -229,19 +234,60 @@ describe("GET /api/stats/genres", () => {
     await addGame(client, b.id, { igdb_id: 1 }); // same game in two lists counts once
     stubIgdb({ genres: { 1: ["RPG", "Adventure"], 2: ["RPG"], 3: ["Shooter"] } }); // 4 has none
 
-    const res = await client.get("/api/stats/genres");
-    expect(res.body).toEqual({
-      game_count: 4,
-      genres: [
+    const res = await client.get("/api/stats/breakdown");
+    expect(res.body.game_count).toBe(4);
+    expect(res.body.genres).toEqual({
+      items: [
         { name: "RPG", count: 2 },
         { name: "Adventure", count: 1 },
         { name: "Shooter", count: 1 },
       ],
-      games_without_genre: 1,
+      without: 1,
     });
   });
 
-  it("keeps the top seven genres and groups the rest as Other", async () => {
+  it("breaks the library down by theme and by game mode as well", async () => {
+    const list = await createList(client);
+    for (const id of [1, 2, 3]) await addGame(client, list.id, { igdb_id: id });
+    stubIgdb({
+      genres: { 1: ["RPG"], 2: ["RPG"], 3: ["RPG"] },
+      themes: { 1: ["Fantasy", "Open world"], 2: ["Fantasy"] },
+      modes: { 1: ["Single player"], 2: ["Single player", "Co-operative"], 3: ["Multiplayer"] },
+    });
+
+    const res = await client.get("/api/stats/breakdown");
+    expect(res.body.themes).toEqual({
+      items: [
+        { name: "Fantasy", count: 2 },
+        { name: "Open world", count: 1 },
+      ],
+      without: 1,
+    });
+    expect(res.body.modes).toEqual({
+      items: [
+        { name: "Single player", count: 2 },
+        { name: "Co-operative", count: 1 },
+        { name: "Multiplayer", count: 1 },
+      ],
+      without: 0,
+    });
+  });
+
+  it("asks IGDB for all three fields in one query", async () => {
+    const list = await createList(client);
+    await addGame(client, list.id, { igdb_id: 1 });
+    stubIgdb({ genres: { 1: ["RPG"] } });
+
+    await client.get("/api/stats/breakdown");
+    const [endpoint, query] = vi.mocked(igdbRequest).mock.calls[0];
+    expect(endpoint).toBe("games");
+    expect(query).toContain("genres.name");
+    expect(query).toContain("themes.name");
+    expect(query).toContain("game_modes.name");
+    expect(vi.mocked(igdbRequest)).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the top seven of each category and groups the rest as Other", async () => {
     const list = await createList(client);
     const names = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
     const genres = {};
@@ -251,9 +297,9 @@ describe("GET /api/stats/genres", () => {
     }
     stubIgdb({ genres });
 
-    const res = await client.get("/api/stats/genres");
-    expect(res.body.genres).toHaveLength(8);
-    expect(res.body.genres.at(-1)).toEqual({ name: "Other", count: 2 });
+    const res = await client.get("/api/stats/breakdown");
+    expect(res.body.genres.items).toHaveLength(8);
+    expect(res.body.genres.items.at(-1)).toEqual({ name: "Other", count: 2 });
   });
 
   it("only asks IGDB about games it has not seen before", async () => {
@@ -261,9 +307,9 @@ describe("GET /api/stats/genres", () => {
     await addGame(client, list.id, { igdb_id: 1 });
     stubIgdb({ genres: { 1: ["RPG"], 2: ["Shooter"] } });
 
-    await client.get("/api/stats/genres");
+    await client.get("/api/stats/breakdown");
     await addGame(client, list.id, { igdb_id: 2 });
-    await client.get("/api/stats/genres");
+    await client.get("/api/stats/breakdown");
 
     const queries = vi.mocked(igdbRequest).mock.calls.map(([, q]) => q);
     expect(queries).toHaveLength(2);
@@ -279,7 +325,7 @@ describe("GET /api/stats/genres", () => {
     })();
     stubIgdb({ genres: {} });
 
-    await client.get("/api/stats/genres");
+    await client.get("/api/stats/breakdown");
     expect(vi.mocked(igdbRequest)).toHaveBeenCalledTimes(3);
   });
 
@@ -288,8 +334,8 @@ describe("GET /api/stats/genres", () => {
     await addGame(client, list.id, { igdb_id: 1 });
     vi.mocked(igdbRequest).mockRejectedValue(new Error("boom"));
 
-    const res = await client.get("/api/stats/genres");
+    const res = await client.get("/api/stats/breakdown");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ igdb_unavailable: true, game_count: null, genres: [], games_without_genre: 0 });
+    expect(res.body).toEqual({ igdb_unavailable: true, game_count: null });
   });
 });

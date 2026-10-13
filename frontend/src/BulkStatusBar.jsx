@@ -1,3 +1,4 @@
+import { CheckCheck, X } from 'lucide-react'
 import { STATUSES } from './statuses'
 
 // The bar that appears at the bottom of the list page in select mode: how many games are picked, quick ways to pick
@@ -11,9 +12,11 @@ export default function BulkStatusBar({ count, visibleCount, busy, message, onSe
       </span>
 
       <button type="button" className="btn-ghost" onClick={onSelectAll} disabled={busy || count === visibleCount}>
+        <CheckCheck size={15} aria-hidden="true" />
         Select All ({visibleCount})
       </button>
       <button type="button" className="btn-ghost" onClick={onClear} disabled={busy || none}>
+        <X size={15} aria-hidden="true" />
         Clear
       </button>
 

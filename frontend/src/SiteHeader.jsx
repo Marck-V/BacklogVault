@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from './auth'
 import ConfirmDialog from './ConfirmDialog'
+import { LogIn, LogOut, UserPlus } from 'lucide-react'
 
 export default function SiteHeader() {
   const { user, loading, openAuth, logout } = useAuth()
@@ -23,9 +24,11 @@ export default function SiteHeader() {
         {!loading && !user && (
           <>
             <button type="button" className="btn-ghost" onClick={() => openAuth('signin')}>
+              <LogIn size={15} aria-hidden="true" />
               Sign In
             </button>
             <button type="button" onClick={() => openAuth('signup')}>
+              <UserPlus size={15} aria-hidden="true" />
               Create Account
             </button>
           </>
@@ -34,9 +37,11 @@ export default function SiteHeader() {
           <>
             <span className="user-pill">Guest</span>
             <button type="button" onClick={() => openAuth('signup')}>
+              <UserPlus size={15} aria-hidden="true" />
               Create Account
             </button>
             <button type="button" className="btn-ghost" onClick={() => openAuth('signin')}>
+              <LogIn size={15} aria-hidden="true" />
               Sign In
             </button>
           </>
@@ -47,6 +52,7 @@ export default function SiteHeader() {
               {user.email}
             </span>
             <button type="button" className="btn-ghost" onClick={handleSignOut}>
+              <LogOut size={15} aria-hidden="true" />
               Sign Out
             </button>
           </>

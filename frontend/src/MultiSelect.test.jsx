@@ -80,7 +80,7 @@ describe('select mode', () => {
     startSelecting()
     expect(screen.getAllByRole('checkbox')).toHaveLength(4)
     expect(container.querySelectorAll('.status-bubble-wrap')).toHaveLength(0)
-    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
     expect(screen.getByRole('button', { name: 'Done' }).getAttribute('aria-pressed')).toBe('true')
     expect(bar()).toBeTruthy()
   })

@@ -4,13 +4,13 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 vi.mock('./api', () => ({
   getTimeToBeatStats: vi.fn(),
   getCurrentlyPlaying: vi.fn(),
-  getGenreBreakdown: vi.fn(),
+  getBreakdown: vi.fn(),
   refreshFromSteam: vi.fn(),
   setEstimateIncluded: vi.fn(),
 }))
 
 import Dashboard from './Dashboard'
-import { getTimeToBeatStats, getCurrentlyPlaying, getGenreBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
+import { getTimeToBeatStats, getCurrentlyPlaying, getBreakdown, setEstimateIncluded, refreshFromSteam } from './api'
 
 const BASE = {
   game_count: 3,
@@ -23,13 +23,29 @@ const BASE = {
   over_limit_games: [],
 }
 
+const none = { items: [], without: 0 }
+const BREAKDOWN_EMPTY = { game_count: 0, genres: none, themes: none, modes: none }
+const BREAKDOWN = {
+  game_count: 12,
+  genres: {
+    items: [
+      { name: 'RPG', count: 7 },
+      { name: 'Shooter', count: 4 },
+      { name: 'Other', count: 2 },
+    ],
+    without: 3,
+  },
+  themes: { items: [{ name: 'Fantasy', count: 9 }, { name: 'Horror', count: 2 }], without: 1 },
+  modes: { items: [{ name: 'Single player', count: 10 }, { name: 'Co-operative', count: 5 }], without: 0 },
+}
+
 const GAME = { igdb_id: 9, name: 'VRChat', main_story_seconds: 180018000, completionist_seconds: 190000000, included: false }
 
 afterEach(cleanup)
 
 beforeEach(() => {
   vi.mocked(getCurrentlyPlaying).mockResolvedValue({ source: 'manual', games: [] })
-  vi.mocked(getGenreBreakdown).mockResolvedValue({ game_count: 0, genres: [], games_without_genre: 0 })
+  vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN_EMPTY)
 })
 
 describe('Dashboard', () => {
@@ -72,42 +88,100 @@ describe('Dashboard', () => {
     expect(setEstimateIncluded).toHaveBeenCalledWith(9, true)
   })
 
-  it('draws the genre breakdown with a count for each genre', async () => {
-    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
-    vi.mocked(getGenreBreakdown).mockResolvedValue({
-      game_count: 12,
-      genres: [
-        { name: 'RPG', count: 7 },
-        { name: 'Shooter', count: 4 },
-        { name: 'Other', count: 2 },
-      ],
-      games_without_genre: 3,
+  describe('library breakdown', () => {
+    beforeEach(() => {
+      localStorage.clear()
     })
-    render(<Dashboard />)
 
-    expect(await screen.findByText('RPG')).toBeTruthy()
-    expect(screen.getByText('Shooter')).toBeTruthy()
-    expect(screen.getByText('7')).toBeTruthy()
-    expect(screen.getByRole('img', { name: 'Your library by genre' })).toBeTruthy()
-    expect(screen.getByText(/3 have no genre on IGDB/)).toBeTruthy()
-  })
+    it('starts on genres, with a count for each', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN)
+      render(<Dashboard />)
 
-  it('says so when genres are unavailable, and keeps the rest of the dashboard', async () => {
-    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
-    vi.mocked(getGenreBreakdown).mockResolvedValue({ igdb_unavailable: true, game_count: null, genres: [] })
-    render(<Dashboard />)
+      expect(await screen.findByText('RPG')).toBeTruthy()
+      expect(screen.getByText('Shooter')).toBeTruthy()
+      expect(screen.getByText('7')).toBeTruthy()
+      expect(screen.getByRole('img', { name: 'Your library by genre' })).toBeTruthy()
+      expect(screen.getByText(/3 have no genre on IGDB/)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Genres' }).getAttribute('aria-pressed')).toBe('true')
+    })
 
-    expect(await screen.findByText(/Genres are temporarily unavailable/)).toBeTruthy()
-    expect(screen.getByText('Total hours played')).toBeTruthy()
-  })
+    it('switches to themes and to game modes, with their own wording', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN)
+      render(<Dashboard />)
+      await screen.findByText('RPG')
 
-  it('survives the genre request failing outright', async () => {
-    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
-    vi.mocked(getGenreBreakdown).mockRejectedValue(new Error('network'))
-    render(<Dashboard />)
+      fireEvent.click(screen.getByRole('button', { name: 'Themes' }))
+      expect(screen.getByText('Fantasy')).toBeTruthy()
+      expect(screen.queryByText('RPG')).toBeNull()
+      expect(screen.getByRole('img', { name: 'Your library by theme' })).toBeTruthy()
+      expect(screen.getByText(/1 have no theme on IGDB/)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Themes' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'Genres' }).getAttribute('aria-pressed')).toBe('false')
 
-    expect(await screen.findByText(/genre chart couldn't be loaded/)).toBeTruthy()
-    expect(screen.getByText('Total hours played')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Game modes' }))
+      expect(screen.getByText('Single player')).toBeTruthy()
+      expect(screen.getByRole('img', { name: 'Your library by game mode' })).toBeTruthy()
+      expect(screen.getByText(/A game can have several modes/)).toBeTruthy()
+      expect(screen.queryByText(/have no game mode/)).toBeNull() // every game has a mode in this data
+    })
+
+    it('remembers the tab you chose', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN)
+      const first = render(<Dashboard />)
+      await screen.findByText('RPG')
+      fireEvent.click(screen.getByRole('button', { name: 'Game modes' }))
+      first.unmount()
+
+      render(<Dashboard />)
+      expect(await screen.findByText('Single player')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Game modes' }).getAttribute('aria-pressed')).toBe('true')
+    })
+
+    it('still works when the browser blocks storage', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN)
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('blocked')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('blocked')
+      })
+      render(<Dashboard />)
+      expect(await screen.findByText('RPG')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Themes' }))
+      expect(screen.getByText('Fantasy')).toBeTruthy()
+      vi.restoreAllMocks()
+    })
+
+    it('says so when a category is empty', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue({ ...BREAKDOWN, themes: none })
+      render(<Dashboard />)
+      await screen.findByText('RPG')
+      fireEvent.click(screen.getByRole('button', { name: 'Themes' }))
+      expect(screen.getByText(/no theme information for your games/)).toBeTruthy()
+    })
+
+    it('says so when IGDB is unavailable, and keeps the rest of the dashboard', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue({ igdb_unavailable: true, game_count: null })
+      render(<Dashboard />)
+
+      expect(await screen.findByText(/temporarily unavailable/)).toBeTruthy()
+      expect(screen.getByText('Total hours played')).toBeTruthy()
+    })
+
+    it('survives the request failing outright', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockRejectedValue(new Error('network'))
+      render(<Dashboard />)
+
+      expect(await screen.findByText(/library breakdown couldn't be loaded/)).toBeTruthy()
+      expect(screen.getByText('Total hours played')).toBeTruthy()
+    })
   })
 
   it('shows recently played Steam games with their two-week hours', async () => {

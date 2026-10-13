@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { searchGames, addGameToList } from './api'
+import { Plus, Search } from 'lucide-react'
 
 function coverUrl(game) {
   return game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : null
@@ -62,6 +63,7 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
           placeholder="Search for a game, e.g. Hades…"
         />
         <button type="submit" disabled={loading}>
+          <Search size={16} aria-hidden="true" />
           {loading ? 'Searching…' : 'Search'}
         </button>
       </form>
@@ -99,6 +101,7 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
                   onClick={() => handleAdd(game)}
                   disabled={lists.length === 0 || status === 'adding'}
                 >
+                  <Plus size={15} aria-hidden="true" />
                   Add to List
                 </button>
               </div>

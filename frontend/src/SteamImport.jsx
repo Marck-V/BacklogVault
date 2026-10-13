@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSteamImportStatus, importSteamLibrary } from './api'
+import { Download } from 'lucide-react'
 
 const plural = (count, one, many) => (count === 1 ? one : many)
 
@@ -102,6 +103,7 @@ export default function SteamImport({ listId, onImported }) {
           maxLength={200}
         />
         <button type="submit" disabled={busy || !steam.trim()}>
+          <Download size={16} aria-hidden="true" />
           {busy ? 'Importing…' : 'Import'}
         </button>
       </form>
