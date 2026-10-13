@@ -212,7 +212,7 @@ describe('Dashboard', () => {
   it('explains how to fill the widget when there is nothing to show', async () => {
     vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
     render(<Dashboard />)
-    expect(await screen.findByText(/Import your Steam library/)).toBeTruthy()
+    expect(await screen.findByText(/Connect your Steam account/)).toBeTruthy()
   })
 
   describe('refresh button', () => {

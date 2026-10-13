@@ -13,6 +13,9 @@ services:
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
       # Optional: a Steam Web API key turns on the "Import from Steam" feature (leave empty to switch it off)
       STEAM_API_KEY: ${STEAM_API_KEY:-}
+      # The address visitors type to reach the site. Steam sends people back here after "Connect Steam", so it must be
+      # the real public address once deployed (for example https://vault.example.com)
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       # Number of proxies in front of the API, so rate limits see the real visitor IP. nginx alone is 1 (the default);
       # set TRUST_PROXY_HOPS=2 in .env when Caddy sits in front of nginx
       TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}
@@ -44,6 +47,10 @@ services:
   web:
     build:
       context: ./frontend
+      args:
+        # Shown on the privacy page (set both in .env before the site is public)
+        VITE_DATA_COUNTRY: ${DATA_COUNTRY:-}
+        VITE_CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     ports:
       - "8080:80"
     depends_on:

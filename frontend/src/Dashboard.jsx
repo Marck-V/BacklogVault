@@ -159,8 +159,8 @@ function PlayingPanel({ playing }) {
       </h3>
       {playing.games.length === 0 ? (
         <p className="panel-empty">
-          Nothing here yet. Import your Steam library to see what you played in the last two weeks, or set a game&apos;s
-          status to Playing.
+          Nothing here yet. Connect your Steam account (under Import from Steam on any list page) to see what you played
+          in the last two weeks, or set a game&apos;s status to Playing.
         </p>
       ) : (
         <div className="currently-playing-covers">

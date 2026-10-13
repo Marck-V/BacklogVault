@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getLists, createList, deleteList, EXPORT_BASE } from './api'
 import Dashboard from './Dashboard'
 import ConfirmDialog from './ConfirmDialog'
+import SteamNotice from './SteamNotice'
 import { useAuth } from './auth'
 import { usePageTitle } from './usePageTitle'
 import { Download, Plus, Trash2 } from 'lucide-react'
@@ -79,6 +80,7 @@ export default function Home() {
   return (
     <div>
       <h1 className="visually-hidden">BacklogVault</h1>
+      <SteamNotice />
 
       {user?.isGuest && lists.length > 0 && !bannerDismissed && (
         <div className="guest-banner" role="note">

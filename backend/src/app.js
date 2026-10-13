@@ -11,6 +11,7 @@ import { attachUser } from "./auth.js";
 import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
 import importRouter from "./importRoutes.js";
+import steamLinkRouter from "./steamLinkRoutes.js";
 import db from "./db.js";
 import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.js";
 
@@ -308,6 +309,7 @@ app.get("/api/library", (req, res) => {
   res.json({ lists: [...byList.values()] });
 });
 
+app.use("/api", steamLinkRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/lists", createWriteLimiter(), listsRouter);
 app.use("/api/import", importRouter);

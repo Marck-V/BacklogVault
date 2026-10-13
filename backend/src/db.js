@@ -69,8 +69,14 @@ if (!listGamesColumns.includes("date_completed")) {
 
 const usersColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 if (!usersColumns.includes("steam_id")) {
-  // The Steam account the user last imported from; it drives the dashboard's "recently played" widget.
   db.exec("ALTER TABLE users ADD COLUMN steam_id TEXT");
+}
+if (!usersColumns.includes("steam_verified")) {
+  // 1 only after the visitor signed in on Steam itself, so steam_id is then an account they really control.
+  db.exec("ALTER TABLE users ADD COLUMN steam_verified INTEGER NOT NULL DEFAULT 0");
+}
+if (!usersColumns.includes("steam_persona")) {
+  db.exec("ALTER TABLE users ADD COLUMN steam_persona TEXT");
 }
 
 const listsColumns = db.prepare("PRAGMA table_info(lists)").all().map((c) => c.name);
@@ -82,6 +88,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_lists_user ON lists(user_id);
   CREATE INDEX IF NOT EXISTS idx_list_games_list ON list_games(list_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+  -- A verified Steam account belongs to exactly one BacklogVault account.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_steam_verified ON users(steam_id) WHERE steam_verified = 1;
+
+  -- Calls made to the Steam Web API each day, to stay under Steam's daily limit for the whole site.
+  CREATE TABLE IF NOT EXISTS steam_api_usage (
+    day TEXT PRIMARY KEY,
+    calls INTEGER NOT NULL
+  );
+
+  -- One row per "Connect Steam" click, so the way back from Steam can be matched to the visitor who left.
+  CREATE TABLE IF NOT EXISTS steam_link_attempts (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL
+  );
 `);
 
 db.prepare("UPDATE list_games SET status = 'Backlog' WHERE status = 'Not Playing'").run();

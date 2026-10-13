@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { parseSteamIdentifier, resolveSteamId, fetchOwnedGames, fetchRecentlyPlayed, SteamError, MAX_OWNED_APPS } from "../src/steam.js";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import db from "../src/db.js";
+import { fetchOwnedGames, fetchRecentlyPlayed, SteamError, MAX_OWNED_APPS } from "../src/steam.js";
 
 const KEY = "TESTKEY0123456789abcdef0123456789";
 const ID = "76561197960287930";
@@ -15,91 +16,6 @@ function stubFetch(handler) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("parseSteamIdentifier", () => {
-  it.each([
-    [ID, { type: "id", value: ID }],
-    [`  ${ID}  `, { type: "id", value: ID }],
-    [`https://steamcommunity.com/profiles/${ID}`, { type: "id", value: ID }],
-    [`https://steamcommunity.com/profiles/${ID}/`, { type: "id", value: ID }],
-    [`steamcommunity.com/profiles/${ID}/games/?tab=all`, { type: "id", value: ID }],
-    ["https://steamcommunity.com/id/gaben", { type: "vanity", value: "gaben" }],
-    ["https://www.steamcommunity.com/id/gaben/", { type: "vanity", value: "gaben" }],
-    ["HTTP://STEAMCOMMUNITY.COM/ID/Gaben", { type: "vanity", value: "Gaben" }],
-    ["steamcommunity.com/id/some_name-1?x=1", { type: "vanity", value: "some_name-1" }],
-    ["gaben", { type: "vanity", value: "gaben" }],
-    ["12345", { type: "vanity", value: "12345" }],
-  ])("reads %j", (input, expected) => {
-    expect(parseSteamIdentifier(input)).toEqual(expected);
-  });
-
-  it.each([
-    [""],
-    ["   "],
-    [null],
-    [undefined],
-    [42],
-    [{}],
-    ["a"],
-    ["x".repeat(33)],
-    ["has space"],
-    ["name/with/slash"],
-    ["name?query=1"],
-    ["https://example.com/id/gaben"],
-    ["https://steamcommunity.com/profiles/123"],
-    ["https://steamcommunity.com/id/bad name"],
-    ["../../etc/passwd"],
-    ["<script>alert(1)</script>"],
-    ["a".repeat(201)],
-  ])("rejects %j", (input) => {
-    expect(() => parseSteamIdentifier(input)).toThrow(SteamError);
-    try {
-      parseSteamIdentifier(input);
-    } catch (err) {
-      expect(err.kind).toBe("invalid_input");
-      expect(err.status).toBe(400);
-    }
-  });
-});
-
-describe("resolveSteamId", () => {
-  it("returns a Steam ID unchanged without calling Steam", async () => {
-    const fetchMock = stubFetch(() => jsonResponse({}));
-    expect(await resolveSteamId({ type: "id", value: ID }, KEY)).toBe(ID);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("looks a custom name up with Steam's vanity endpoint", async () => {
-    const fetchMock = stubFetch((url) => {
-      expect(url.host).toBe("api.steampowered.com");
-      expect(url.pathname).toBe("/ISteamUser/ResolveVanityURL/v1/");
-      expect(url.searchParams.get("vanityurl")).toBe("gaben");
-      expect(url.searchParams.get("key")).toBe(KEY);
-      return jsonResponse({ response: { success: 1, steamid: ID } });
-    });
-    expect(await resolveSteamId({ type: "vanity", value: "gaben" }, KEY)).toBe(ID);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports a name that matches no profile as not found", async () => {
-    stubFetch(() => jsonResponse({ response: { success: 42, message: "No match" } }));
-    await expect(resolveSteamId({ type: "vanity", value: "nobody-here" }, KEY)).rejects.toMatchObject({
-      kind: "not_found",
-      status: 404,
-    });
-  });
-
-  it.each([[{ response: { success: 1, steamid: "not-an-id" } }], [{ response: { success: 9 } }], [{}], [null]])(
-    "treats an unexpected answer %j as Steam being unavailable",
-    async (body) => {
-      stubFetch(() => jsonResponse(body));
-      await expect(resolveSteamId({ type: "vanity", value: "gaben" }, KEY)).rejects.toMatchObject({
-        kind: "unavailable",
-        status: 502,
-      });
-    }
-  );
 });
 
 describe("fetchOwnedGames", () => {
@@ -237,5 +153,68 @@ describe("fetchRecentlyPlayed", () => {
     expect(err).toBeInstanceOf(SteamError);
     expect(JSON.stringify(err)).not.toContain(KEY);
     expect(err.message).not.toContain(KEY);
+  });
+});
+
+describe("the daily call budget", () => {
+  const today = () => new Date().toISOString().slice(0, 10);
+  const used = (day = today()) => db.prepare("SELECT calls FROM steam_api_usage WHERE day = ?").get(day)?.calls ?? 0;
+  const answer = () => jsonResponse({ response: { games: [{ appid: 570, name: "Dota 2", playtime_forever: 60 }] } });
+
+  beforeEach(() => {
+    db.exec("DELETE FROM steam_api_usage");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it("counts every call to the Steam Web API", async () => {
+    stubFetch(answer);
+    await fetchOwnedGames(ID, KEY);
+    await fetchRecentlyPlayed(ID, KEY);
+    expect(used()).toBe(2);
+  });
+
+  it("stops before the limit is passed, without calling Steam", async () => {
+    vi.stubEnv("STEAM_DAILY_CALL_LIMIT", "3");
+    const fetchMock = stubFetch(answer);
+    for (let i = 0; i < 3; i++) await fetchOwnedGames(ID, KEY);
+
+    const err = await fetchOwnedGames(ID, KEY).catch((e) => e);
+    expect(err).toBeInstanceOf(SteamError);
+    expect(err.kind).toBe("quota");
+    expect(err.status).toBe(503);
+    expect(err.message).toMatch(/try again tomorrow/);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(used()).toBe(3);
+  });
+
+  it("starts a fresh count on the next day", async () => {
+    vi.stubEnv("STEAM_DAILY_CALL_LIMIT", "1");
+    stubFetch(answer);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-12T23:59:00Z"));
+    await fetchOwnedGames(ID, KEY);
+    await expect(fetchOwnedGames(ID, KEY)).rejects.toMatchObject({ kind: "quota" });
+
+    vi.setSystemTime(new Date("2026-10-13T00:01:00Z"));
+    await expect(fetchOwnedGames(ID, KEY)).resolves.toHaveLength(1);
+    expect(used("2026-10-12")).toBe(1);
+    expect(used("2026-10-13")).toBe(1);
+  });
+
+  it("keeps a safe margin below Steam's 100,000-a-day limit by default", async () => {
+    const { DEFAULT_DAILY_CALL_LIMIT } = await import("../src/steam.js");
+    expect(DEFAULT_DAILY_CALL_LIMIT).toBeLessThan(100000);
+    expect(DEFAULT_DAILY_CALL_LIMIT).toBeGreaterThanOrEqual(80000);
+  });
+
+  it("is remembered in the database, so a restart does not reset it", async () => {
+    vi.stubEnv("STEAM_DAILY_CALL_LIMIT", "2");
+    db.prepare("INSERT INTO steam_api_usage (day, calls) VALUES (?, 2)").run(today());
+    stubFetch(answer);
+    await expect(fetchOwnedGames(ID, KEY)).rejects.toMatchObject({ kind: "quota" });
   });
 });

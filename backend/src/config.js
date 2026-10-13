@@ -8,3 +8,30 @@ export function trustProxyHops(value = process.env.TRUST_PROXY) {
   }
   return Number(value);
 }
+
+function originOf(value, name) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a full web address such as https://example.com, got "${value}"`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${name} must start with http:// or https://, got "${value}"`);
+  }
+  return url.origin;
+}
+
+// The address the outside world uses to reach this API. Steam sends visitors back here after sign-in, so it comes
+// from configuration and never from the request (a forged Host header must not be able to redirect anyone).
+export function publicUrl(env = process.env) {
+  return originOf(env.PUBLIC_URL || `http://localhost:${env.PORT || 4000}`, "PUBLIC_URL");
+}
+
+// Where visitors land after Steam sign-in: the website. Same as publicUrl when one address serves both (Docker/nginx),
+// and the Vite dev server in local development, where the API and the website are on different ports.
+export function appUrl(env = process.env) {
+  if (env.APP_URL) return originOf(env.APP_URL, "APP_URL");
+  if (env.PUBLIC_URL) return originOf(env.PUBLIC_URL, "PUBLIC_URL");
+  return originOf((env.CORS_ORIGIN || "http://localhost:5173").split(",")[0].trim(), "CORS_ORIGIN");
+}

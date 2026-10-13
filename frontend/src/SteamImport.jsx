@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { getSteamImportStatus, importSteamLibrary } from './api'
-import { Download } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { STEAM_CONNECT_URL, getSteamImportStatus, importSteamLibrary, unlinkSteam } from './api'
+import { Download, Unlink } from 'lucide-react'
+import ConfirmDialog from './ConfirmDialog'
 
 const plural = (count, one, many) => (count === 1 ? one : many)
 
@@ -46,34 +48,34 @@ function Summary({ result }) {
 }
 
 export default function SteamImport({ listId, onImported }) {
-  const [enabled, setEnabled] = useState(false)
-  const [steam, setSteam] = useState('')
+  const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   useEffect(() => {
     let active = true
     getSteamImportStatus()
-      .then((status) => active && setEnabled(Boolean(status?.enabled)))
+      .then((data) => active && setStatus(data))
       .catch(() => {})
     return () => {
       active = false
     }
   }, [])
 
-  if (!enabled) return null
+  if (!status?.enabled) return null
+  const linked = Boolean(status.linked)
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    const value = steam.trim()
-    if (!value || busy) return
-
+  // Steam's terms allow reading someone's Steam data only when they ask, so this runs only from a button click and
+  // only for the account the visitor connected through Steam's own sign-in.
+  async function runImport() {
+    if (busy) return
     setBusy(true)
     setError(null)
     setResult(null)
     try {
-      setResult(await importSteamLibrary(listId, value))
+      setResult(await importSteamLibrary(listId))
       onImported?.()
     } catch (err) {
       setError(err.message)
@@ -82,37 +84,77 @@ export default function SteamImport({ listId, onImported }) {
     }
   }
 
+  async function handleDisconnect() {
+    setConfirmDisconnect(false)
+    setError(null)
+    try {
+      await unlinkSteam()
+      setStatus((previous) => ({ ...previous, linked: false, personaName: null }))
+      setResult(null)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   return (
     <section className="steam-import">
       <h2>Import from Steam</h2>
-      <p className="steam-import-help">
-        Paste your Steam profile link, your 17-digit Steam ID or your custom profile name. Your profile&apos;s{' '}
-        <strong>Game details</strong> must be set to Public. Games are added as Backlog, with your hours played.
-        Please only import your own library.
+
+      {linked ? (
+        <>
+          <p className="steam-import-help">
+            Connected as <strong translate="no">{status.personaName ?? 'your Steam account'}</strong>. Your profile&apos;s{' '}
+            <strong>Game details</strong> must be set to Public. Games are added as Backlog, with your hours played, and
+            your recently played games appear on the dashboard.
+          </p>
+          <div className="steam-import-actions">
+            <button type="button" onClick={runImport} disabled={busy}>
+              <Download size={16} aria-hidden="true" />
+              {busy ? 'Importing…' : 'Import my library'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setConfirmDisconnect(true)} disabled={busy}>
+              <Unlink size={16} aria-hidden="true" />
+              Disconnect
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="steam-import-help">
+            Connect your Steam account to import your library and keep your recently played games up to date. You sign
+            in on Steam&apos;s own site, so we never see your password.
+          </p>
+          <div className="steam-import-actions">
+            {/* Valve's own "Sign in through Steam" button, shown as supplied. */}
+            <a className="steam-signin" href={STEAM_CONNECT_URL}>
+              <img src="/sits_01.png" alt="Sign in through Steam" width="180" height="35" />
+            </a>
+          </div>
+        </>
+      )}
+
+      <p className="steam-import-help steam-import-data">
+        We store your Steam ID, your Steam display name and the hours you have played in the games you import. We read
+        your Steam data only when you ask: when you import, press Refresh from Steam, or open your dashboard.{' '}
+        <Link to="/privacy">How we use your Steam data</Link>
       </p>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          name="steam"
-          autoComplete="off"
-          spellCheck={false}
-          aria-label="Steam profile"
-          value={steam}
-          onChange={(e) => setSteam(e.target.value)}
-          placeholder="steamcommunity.com/id/yourname…"
-          maxLength={200}
-        />
-        <button type="submit" disabled={busy || !steam.trim()}>
-          <Download size={16} aria-hidden="true" />
-          {busy ? 'Importing…' : 'Import'}
-        </button>
-      </form>
+
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
       {result && <Summary result={result} />}
+
+      {confirmDisconnect && (
+        <ConfirmDialog
+          message="Disconnect your Steam account? We will remove your Steam ID and display name. Games and hours you already imported stay in your lists, and your recently played games will stop showing on the dashboard."
+          confirmLabel="Disconnect"
+          cancelLabel="Cancel"
+          onConfirm={handleDisconnect}
+          onCancel={() => setConfirmDisconnect(false)}
+        />
+      )}
     </section>
   )
 }

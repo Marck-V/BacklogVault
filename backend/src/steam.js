@@ -1,11 +1,8 @@
+import db from "./db.js";
+
 const STEAM_API = "https://api.steampowered.com";
 const REQUEST_TIMEOUT_MS = 10000;
 export const MAX_OWNED_APPS = 20000;
-
-const STEAM_ID64 = /^7656119\d{10}$/;
-const VANITY_NAME = /^[A-Za-z0-9_-]{2,32}$/;
-// The profile segment must end at a path boundary, so "…/id/bad name" is refused instead of reading as "bad".
-const PROFILE_URL = /^(?:https?:\/\/)?(?:www\.)?steamcommunity\.com\/(profiles|id)\/([^/?#\s]+)(?:[/?#].*)?$/i;
 
 // kind says what went wrong, status is the HTTP status we answer with, message is safe to show to a visitor.
 // None of these ever carries the Steam URL or the original error, because Steam wants the API key in the URL.
@@ -19,42 +16,31 @@ export class SteamError extends Error {
   }
 }
 
-const invalidInput = () =>
-  new SteamError(
-    "invalid_input",
-    "Enter a Steam profile link, a 17-digit Steam ID, or your custom profile name.",
-    400
-  );
-
 const unavailable = (upstreamStatus) =>
   new SteamError("unavailable", "Steam isn't responding right now. Please try again in a minute.", 502, upstreamStatus);
 
-// Accepts a profile link (https://steamcommunity.com/id/name or /profiles/7656119...), a 17-digit Steam ID,
-// or a bare custom profile name. Only characters Steam allows get through, so nothing odd reaches a URL.
-export function parseSteamIdentifier(raw) {
-  if (typeof raw !== "string") throw invalidInput();
-  const text = raw.trim();
-  if (!text || text.length > 200) throw invalidInput();
+// Steam's terms cap the Web API at 100,000 calls a day for the whole site, whoever triggers them. We stop at 90,000 (by UTC
+// day, kept in the database so a restart does not reset it) and answer "try again tomorrow" instead of risking the key.
+export const DEFAULT_DAILY_CALL_LIMIT = 90000;
 
-  if (STEAM_ID64.test(text)) return { type: "id", value: text };
-
-  const url = PROFILE_URL.exec(text);
-  if (url) {
-    const kind = url[1].toLowerCase();
-    const value = url[2];
-    if (kind === "profiles") {
-      if (STEAM_ID64.test(value)) return { type: "id", value };
-      throw invalidInput();
+function spendCall() {
+  const limit = Number(process.env.STEAM_DAILY_CALL_LIMIT ?? DEFAULT_DAILY_CALL_LIMIT);
+  const day = new Date().toISOString().slice(0, 10);
+  db.transaction(() => {
+    const used = db.prepare("SELECT calls FROM steam_api_usage WHERE day = ?").get(day)?.calls ?? 0;
+    if (used >= limit) {
+      throw new SteamError(
+        "quota",
+        "Steam lookups are paused for today because this site has used its daily allowance. Please try again tomorrow.",
+        503
+      );
     }
-    if (VANITY_NAME.test(value)) return { type: "vanity", value };
-    throw invalidInput();
-  }
-
-  if (VANITY_NAME.test(text)) return { type: "vanity", value: text };
-  throw invalidInput();
+    db.prepare("INSERT INTO steam_api_usage (day, calls) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET calls = calls + 1").run(day);
+  })();
 }
 
 async function steamGet(path, params, apiKey) {
+  spendCall();
   const url = new URL(`${STEAM_API}${path}`);
   url.search = new URLSearchParams({ ...params, key: apiKey, format: "json" }).toString();
 
@@ -72,17 +58,6 @@ async function steamGet(path, params, apiKey) {
   } catch {
     throw unavailable(res.status);
   }
-}
-
-export async function resolveSteamId(identifier, apiKey) {
-  if (identifier.type === "id") return identifier.value;
-
-  const body = await steamGet("/ISteamUser/ResolveVanityURL/v1/", { vanityurl: identifier.value }, apiKey);
-  const result = body?.response;
-  if (result?.success === 1 && STEAM_ID64.test(String(result.steamid))) return String(result.steamid);
-  // 42 is what Steam returns for a name that matches no profile (community-documented, not in Valve's docs).
-  if (result?.success === 42) throw new SteamError("not_found", "We couldn't find that Steam profile.", 404);
-  throw unavailable();
 }
 
 // Returns [{ appid, name, minutes }]. Steam answers with an empty object when the owned games are not visible.
@@ -136,4 +111,15 @@ export async function fetchRecentlyPlayed(steamId, apiKey, count = 12) {
       minutes: Number.isFinite(game.playtime_2weeks) && game.playtime_2weeks > 0 ? game.playtime_2weeks : 0,
     }))
     .sort((a, b) => b.minutes - a.minutes);
+}
+
+// The account's display name, for showing "Connected as ...". Best effort: a failure just means no name is shown.
+export async function fetchPersonaName(steamId, apiKey) {
+  try {
+    const body = await steamGet("/ISteamUser/GetPlayerSummaries/v2/", { steamids: steamId }, apiKey);
+    const name = body?.response?.players?.[0]?.personaname;
+    return typeof name === "string" && name.trim() ? name.trim().slice(0, 100) : null;
+  } catch {
+    return null;
+  }
 }

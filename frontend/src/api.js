@@ -115,14 +115,21 @@ export function logoutAccount() {
   return request('/api/auth/logout', { method: 'POST' })
 }
 
+// Where the "Connect Steam" button goes: the API sends the visitor on to Steam's own sign-in page.
+export const STEAM_CONNECT_URL = `${API_BASE}/api/auth/steam/start`
+
+export function unlinkSteam() {
+  return request('/api/steam/link', { method: 'DELETE' })
+}
+
 export function getSteamImportStatus() {
   return request('/api/import/steam/status')
 }
 
-export function importSteamLibrary(listId, steam) {
+export function importSteamLibrary(listId) {
   return request('/api/import/steam', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ listId: Number(listId), steam }),
+    body: JSON.stringify({ listId: Number(listId) }),
   })
 }

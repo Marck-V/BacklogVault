@@ -1,8 +1,9 @@
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Link, Routes, Route, useLocation } from 'react-router-dom'
 import './App.css'
 import Home from './Home'
 import ListView from './ListView'
 import NotFound from './NotFound'
+import PrivacyPage from './PrivacyPage'
 import ErrorBoundary from './ErrorBoundary'
 import SiteHeader from './SiteHeader'
 import AuthProvider from './AuthProvider'
@@ -17,6 +18,7 @@ function AppRoutes() {
       <Routes key={user ? user.id : 'anonymous'}>
         <Route path="/" element={<Home />} />
         <Route path="/lists/:id" element={<ListView />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </ErrorBoundary>
@@ -35,10 +37,20 @@ function App() {
           <AppRoutes />
         </main>
         <footer className="site-footer">
-          Game data and cover art provided by{' '}
-          <a href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">
-            IGDB.com
-          </a>
+          <p>
+            Game data and cover art provided by{' '}
+            <a href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">
+              IGDB.com
+            </a>
+            . Steam data from the Steam Web API.
+          </p>
+          <p>
+            BacklogVault is not affiliated with or endorsed by Valve or{' '}
+            <a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">
+              Steam
+            </a>
+            . Steam and the Steam logo are trademarks of Valve Corporation. <Link to="/privacy">Privacy and Steam data</Link>
+          </p>
         </footer>
       </div>
     </AuthProvider>
