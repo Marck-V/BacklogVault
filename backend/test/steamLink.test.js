@@ -314,20 +314,83 @@ describe("connected state", () => {
     expect((await request(app).get("/api/import/steam/status")).body.linked).toBe(false);
   });
 
-  it("can be disconnected, which clears the account but keeps the imported games", async () => {
-    await connect();
-    const list = await createList(client);
-    db.prepare("INSERT INTO list_games (list_id, igdb_id, name) VALUES (?, 1, 'Kept')").run(list.id);
+  const disconnect = (agent = client, body = { deleteLibrary: true }) => agent.delete("/api/steam/link").send(body);
+  const libraryCounts = () => ({
+    lists: db.prepare("SELECT COUNT(*) AS n FROM lists").get().n,
+    games: db.prepare("SELECT COUNT(*) AS n FROM list_games").get().n,
+  });
 
-    const res = await client.delete("/api/steam/link");
-    expect(res.body).toEqual({ linked: false });
+  async function libraryOf(agent, name, gameCount) {
+    const list = await createList(agent, name);
+    for (let i = 1; i <= gameCount; i++) {
+      db.prepare("INSERT INTO list_games (list_id, igdb_id, name, hours_played) VALUES (?, ?, ?, 12.5)").run(list.id, i, `Game ${i}`);
+    }
+    return list;
+  }
+
+  it("disconnecting clears the Steam account and deletes the whole library, and says how much", async () => {
+    await connect();
+    await libraryOf(client, "Backlog", 3);
+    await libraryOf(client, "Favourites", 2);
+
+    const res = await disconnect();
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ linked: false, deleted: { lists: 2, games: 5 } });
     expect(row()).toEqual([{ steam_id: null, steam_verified: 0, steam_persona: null }]);
-    expect(db.prepare("SELECT COUNT(*) AS n FROM list_games").get().n).toBe(1);
+    expect(libraryCounts()).toEqual({ lists: 0, games: 0 });
+  });
+
+  it("also removes the choices that referred to those games", async () => {
+    await connect();
+    const list = await libraryOf(client, "Backlog", 1);
+    await client.put("/api/stats/time-to-beat/includes/1").send({ included: true });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM time_estimate_includes").get().n).toBe(1);
+
+    await disconnect();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM time_estimate_includes").get().n).toBe(0);
+    expect((await client.get(`/api/lists/${list.id}`)).status).toBe(404);
+  });
+
+  it("leaves other people's libraries alone", async () => {
+    await connect();
+    await libraryOf(client, "Mine", 2);
+    const other = newClient(app);
+    await libraryOf(other, "Theirs", 4);
+
+    await disconnect();
+    expect(libraryCounts()).toEqual({ lists: 1, games: 4 });
+  });
+
+  it("refuses unless the request explicitly confirms the deletion, and changes nothing", async () => {
+    await connect();
+    await libraryOf(client, "Backlog", 3);
+    for (const body of [{}, { deleteLibrary: false }, { deleteLibrary: "true" }, { deleteLibrary: 1 }]) {
+      const res = await disconnect(client, body);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/also deletes your library/);
+    }
+    expect(libraryCounts()).toEqual({ lists: 1, games: 3 });
+    expect(row()[0]).toMatchObject({ steam_id: STEAM_ID, steam_verified: 1 });
+  });
+
+  it("does not delete the library of someone who has no Steam account connected", async () => {
+    await libraryOf(client, "Backlog", 3);
+    const res = await disconnect();
+    expect(res.status).toBe(409);
+    expect(libraryCounts()).toEqual({ lists: 1, games: 3 });
+  });
+
+  it("forgets the recently played games it had kept for that person", async () => {
+    await connect();
+    db.prepare("UPDATE users SET steam_id = ?, steam_verified = 1").run(STEAM_ID);
+    await disconnect();
+    const res = await client.get("/api/stats/currently-playing");
+    expect(res.body).toMatchObject({ source: "manual", steam_linked: false, games: [] });
   });
 
   it("frees the Steam account for someone else once disconnected", async () => {
     await connect();
-    await client.delete("/api/steam/link");
+    await disconnect();
     const other = newClient(app);
     await connect(other);
     expect(row().filter((u) => u.steam_verified === 1)).toHaveLength(1);

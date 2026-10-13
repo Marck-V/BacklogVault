@@ -5,6 +5,7 @@ import { ensureUser } from "./auth.js";
 import { appUrl, publicUrl } from "./config.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { SteamError, fetchPersonaName } from "./steam.js";
+import { forgetRecentlyPlayed } from "./dashboardData.js";
 import { buildLoginUrl, claimedSteamId, readOpenIdParams, steamConfirms } from "./steamOpenId.js";
 import { createGuestLimiter, createSteamLinkLimiter } from "./writeLimiters.js";
 
@@ -87,11 +88,33 @@ router.get(
   })
 );
 
-// Disconnects the Steam account. Games already imported stay.
+// Disconnects the Steam account AND deletes the library (every list and game in it), so no Steam data, such as the hours
+// imported from Steam, outlives the connection. That cannot be undone, so the request must say so explicitly: a client
+// that only means "disconnect" gets a refusal instead of silently losing someone's lists.
 router.delete("/steam/link", (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Not signed in" });
-  db.prepare("UPDATE users SET steam_id = NULL, steam_verified = 0, steam_persona = NULL WHERE id = ?").run(req.user.id);
-  res.json({ linked: false });
+  if (req.body?.deleteLibrary !== true) {
+    return res.status(400).json({
+      error: "Disconnecting Steam also deletes your library. Send deleteLibrary: true to confirm.",
+    });
+  }
+
+  const linked = db.prepare("SELECT 1 FROM users WHERE id = ? AND steam_verified = 1").get(req.user.id);
+  if (!linked) return res.status(409).json({ error: "No Steam account is connected." });
+
+  const deleted = db.transaction(() => {
+    const games = db
+      .prepare("SELECT COUNT(*) AS n FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ?")
+      .get(req.user.id).n;
+    // A list's games go with it (the database cascades), and so does everything that refers to them.
+    const lists = db.prepare("DELETE FROM lists WHERE user_id = ?").run(req.user.id).changes;
+    db.prepare("DELETE FROM time_estimate_includes WHERE user_id = ?").run(req.user.id);
+    db.prepare("UPDATE users SET steam_id = NULL, steam_verified = 0, steam_persona = NULL WHERE id = ?").run(req.user.id);
+    return { lists, games };
+  })();
+
+  forgetRecentlyPlayed(req.user.id);
+  res.json({ linked: false, deleted });
 });
 
 export default router;

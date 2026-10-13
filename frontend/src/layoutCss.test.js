@@ -34,6 +34,12 @@ describe('what keeps the page inside the screen width', () => {
     expect(rule('.list-toolbar')).toMatch(/flex-wrap:\s*wrap/)
   })
 
+  it("stacks a search result's list menu and Add button, so the button text never wraps letter by letter", () => {
+    expect(rule('.add-row')).toMatch(/flex-direction:\s*column/)
+    expect(rule('.add-row button')).toMatch(/white-space:\s*nowrap/)
+    expect(rule('.add-row select')).toMatch(/min-width:\s*0/)
+  })
+
   it('lets a list row shrink its name', () => {
     expect(rule('.game-row-name')).toMatch(/min-width:\s*0/)
   })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { STEAM_CONNECT_URL, getSteamImportStatus, importSteamLibrary, unlinkSteam } from './api'
+import { Link, useNavigate } from 'react-router-dom'
+import { EXPORT_BASE, STEAM_CONNECT_URL, getSteamImportStatus, importSteamLibrary, disconnectSteamAndDeleteLibrary } from './api'
 import { Download, Unlink } from 'lucide-react'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -53,6 +53,7 @@ export default function SteamImport({ listId, onImported }) {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
     let active = true
@@ -88,9 +89,9 @@ export default function SteamImport({ listId, onImported }) {
     setConfirmDisconnect(false)
     setError(null)
     try {
-      await unlinkSteam()
-      setStatus((previous) => ({ ...previous, linked: false, personaName: null }))
-      setResult(null)
+      await disconnectSteamAndDeleteLibrary()
+      // The list this page shows no longer exists, so go home, where a message says what happened.
+      navigate('/?steam=disconnected', { replace: true })
     } catch (err) {
       setError(err.message)
     }
@@ -105,7 +106,7 @@ export default function SteamImport({ listId, onImported }) {
           <p className="steam-import-help">
             Connected as <strong translate="no">{status.personaName ?? 'your Steam account'}</strong>. Your profile&apos;s{' '}
             <strong>Game details</strong> must be set to Public. Games are added as Backlog, with your hours played, and
-            your recently played games appear on the dashboard.
+            your recently played games appear on the dashboard. Disconnecting deletes your library.
           </p>
           <div className="steam-import-actions">
             <button type="button" onClick={runImport} disabled={busy}>
@@ -148,8 +149,18 @@ export default function SteamImport({ listId, onImported }) {
 
       {confirmDisconnect && (
         <ConfirmDialog
-          message="Disconnect your Steam account? We will remove your Steam ID and display name. Games and hours you already imported stay in your lists, and your recently played games will stop showing on the dashboard."
-          confirmLabel="Disconnect"
+          message={
+            <>
+              Disconnect Steam and delete your library? This removes your Steam ID and display name and{' '}
+              <strong>permanently deletes all of your lists and the games in them</strong>, including games you added
+              yourself. It cannot be undone.{' '}
+              <a href={`${EXPORT_BASE}/export/csv`} download="backlog.csv">
+                Download a copy first
+              </a>
+              .
+            </>
+          }
+          confirmLabel="Disconnect and Delete Library"
           cancelLabel="Cancel"
           onConfirm={handleDisconnect}
           onCancel={() => setConfirmDisconnect(false)}

@@ -118,8 +118,13 @@ export function logoutAccount() {
 // Where the "Connect Steam" button goes: the API sends the visitor on to Steam's own sign-in page.
 export const STEAM_CONNECT_URL = `${API_BASE}/api/auth/steam/start`
 
-export function unlinkSteam() {
-  return request('/api/steam/link', { method: 'DELETE' })
+// Disconnecting also deletes the whole library, and the server insists the request says so on purpose.
+export function disconnectSteamAndDeleteLibrary() {
+  return request('/api/steam/link', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deleteLibrary: true }),
+  })
 }
 
 export function getSteamImportStatus() {
