@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import SteamImport from './SteamImport'
 
 const SUMMARY = {
@@ -243,40 +243,93 @@ describe('importing', () => {
 })
 
 describe('disconnecting', () => {
-  it('explains what is removed and what stays before doing anything', async () => {
-    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
-    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+  const lists = { 'GET /api/lists': { body: [] }, 'GET /': { body: {} } }
 
-    const dialog = screen.getByRole('alertdialog')
-    expect(within(dialog).getByText(/remove your Steam ID and display name/)).toBeTruthy()
-    expect(within(dialog).getByText(/Games and hours you already imported stay in your lists/)).toBeTruthy()
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  function showAt(entry = '/lists/7') {
+    return render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/lists/:id" element={<SteamImport listId="7" />} />
+          <Route path="/" element={<Where />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  function Where() {
+    const { search } = useLocation()
+    return <div data-testid="home">home{search}</div>
+  }
+
+  async function openDisconnect(handlers = {}) {
+    const fetchMock = mockApi({ ...connected, ...lists, ...handlers })
+    showAt()
+    await screen.findByText('Gabe')
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    return { fetchMock, dialog: screen.getByRole('alertdialog') }
+  }
+
+  const deletes = (fetchMock) => fetchMock.mock.calls.filter(([, options]) => options?.method === 'DELETE')
+
+  it('warns, in plain words, that the whole library will be deleted for good', async () => {
+    const { dialog } = await openDisconnect()
+    expect(within(dialog).getByText(/permanently deletes all of your lists and the games in them/)).toBeTruthy()
+    expect(within(dialog).getByText(/including games you added yourself/)).toBeTruthy()
+    expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Disconnect and Delete Library' })).toBeTruthy()
+  })
+
+  it('offers a download of the library first', async () => {
+    const { dialog } = await openDisconnect()
+    const link = within(dialog).getByRole('link', { name: 'Download a copy first' })
+    expect(link.getAttribute('href')).toMatch(/\/export\/csv$/)
+    expect(link.hasAttribute('download')).toBe(true)
+  })
+
+  it('also warns on the panel itself, before anyone clicks', async () => {
+    mockApi(connected)
+    show()
+    expect(await screen.findByText(/Disconnecting deletes your library/)).toBeTruthy()
+  })
+
+  it('does nothing until it is confirmed', async () => {
+    const { fetchMock } = await openDisconnect()
+    expect(deletes(fetchMock)).toHaveLength(0)
   })
 
   it('does nothing when cancelled', async () => {
-    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
-    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+    const { fetchMock, dialog } = await openDisconnect()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(screen.getByText('Gabe')).toBeTruthy()
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+    expect(deletes(fetchMock)).toHaveLength(0)
   })
 
-  it('disconnects when confirmed, then offers the sign-in button again', async () => {
-    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
-    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' }))
-
-    expect(await screen.findByRole('link', { name: 'Sign in through Steam' })).toBeTruthy()
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(true)
+  it('does nothing when Escape is pressed', async () => {
+    const { fetchMock } = await openDisconnect()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(deletes(fetchMock)).toHaveLength(0)
   })
 
-  it('shows an error when disconnecting fails and stays connected', async () => {
-    await renderConnected({ 'DELETE /api/steam/link': { status: 500, body: { error: 'Nope' } } })
-    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' }))
+  it('asks the server to delete the library on purpose, then goes home with a message', async () => {
+    const { fetchMock, dialog } = await openDisconnect({
+      'DELETE /api/steam/link': { body: { linked: false, deleted: { lists: 2, games: 5 } } },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect and Delete Library' }))
+
+    expect((await screen.findByTestId('home')).textContent).toBe('home?steam=disconnected')
+    const call = deletes(fetchMock)[0]
+    expect(JSON.parse(call[1].body)).toEqual({ deleteLibrary: true })
+    expect(call[1].credentials).toBe('include')
+  })
+
+  it('shows an error when it fails, and stays where it is', async () => {
+    const { dialog } = await openDisconnect({ 'DELETE /api/steam/link': { status: 500, body: { error: 'Nope' } } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect and Delete Library' }))
     expect((await screen.findByRole('alert')).textContent).toBe('Nope')
     expect(screen.getByText('Gabe')).toBeTruthy()
+    expect(screen.queryByTestId('home')).toBeNull()
   })
 })

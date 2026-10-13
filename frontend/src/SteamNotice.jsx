@@ -20,6 +20,9 @@ export default function SteamNotice() {
     if (outcome === 'linked') {
       return { ok: true, text: 'Steam connected. Your recently played games will now show on the dashboard.' }
     }
+    if (outcome === 'disconnected') {
+      return { ok: true, text: 'Steam disconnected, and your library was deleted.' }
+    }
     if (outcome === 'error') {
       return { ok: false, text: MESSAGES[searchParams.get('reason')] ?? 'Steam sign-in did not work. Please try again.' }
     }

@@ -17,6 +17,11 @@ function remember(cache, key, value) {
   cache.set(key, value);
 }
 
+// Called when someone disconnects Steam, so nothing about their account lingers in memory.
+export function forgetRecentlyPlayed(userId) {
+  recentCache.delete(userId);
+}
+
 export function clearDashboardCaches() {
   recentCache.clear();
   genreCache.clear();

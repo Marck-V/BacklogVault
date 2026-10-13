@@ -26,6 +26,11 @@ describe('the message after coming back from Steam', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('confirms that Steam was disconnected and the library deleted', () => {
+    renderAt('/?steam=disconnected')
+    expect(screen.getByRole('status').textContent).toBe('Steam disconnected, and your library was deleted.')
+  })
+
   it('confirms a successful connection', () => {
     renderAt('/?steam=linked')
     expect(screen.getByRole('status').textContent).toMatch(/Steam connected/)

@@ -65,12 +65,11 @@ export default function PrivacyPage() {
       <ul>
         <li>
           <strong>Disconnect Steam</strong> (under Import from Steam on any list page) removes your Steam ID and display
-          name from our records.
+          name and <strong>deletes your whole library</strong>: every list and every game in it, including games you added
+          yourself, so that none of the hours imported from Steam are kept. It asks you to confirm first, and offers a
+          download of your library. It cannot be undone.
         </li>
-        <li>
-          Games and hours you have already imported stay in your lists until you remove the games or delete the list.
-          Deleting a list deletes everything in it.
-        </li>
+        <li>You can also remove individual games, or delete a list, at any time. Deleting a list deletes everything in it.</li>
         <li>
           {CONTACT_EMAIL ? (
             <>

@@ -62,6 +62,14 @@ describe('the privacy page (Steam Web API terms)', () => {
     expect(within(screen.getByRole('article')).getByText(/trademarks of Valve Corporation/)).toBeTruthy()
   })
 
+  it('says disconnecting Steam deletes the whole library', async () => {
+    renderAt('/privacy')
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText(/deletes your whole library/)).toBeTruthy()
+    expect(screen.getByText(/including games you added/)).toBeTruthy()
+    expect(screen.getByText(/It cannot be undone/)).toBeTruthy()
+  })
+
   it('does not invent a storage country: it says plainly when none has been set', async () => {
     renderAt('/privacy')
     await screen.findByRole('heading', { level: 1 })
