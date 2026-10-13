@@ -1657,3 +1657,81 @@ a:has(> .lucide) {
     animation: none;
   }
 }
+
+/* Steam connection */
+
+.steam-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.steam-import-or {
+  margin-top: 1.25rem;
+}
+
+/* The image is Valve's and is left exactly as supplied: no filters, rounding or resizing. */
+.app a.steam-signin {
+  display: inline-block;
+  line-height: 0;
+  border-radius: 3px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.9rem;
+}
+
+.notice-ok {
+  border-left: 3px solid var(--success);
+}
+
+.notice-error {
+  border-left: 3px solid var(--danger);
+}
+
+/* Privacy page and footer */
+
+.site-footer p {
+  margin: 0 0 0.4rem;
+}
+
+.policy {
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.65;
+}
+
+.policy h1 {
+  margin-bottom: 0.5rem;
+}
+
+.policy h2 {
+  margin: 2rem 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.policy ul {
+  padding-left: 1.25rem;
+}
+
+.policy li {
+  margin-bottom: 0.4rem;
+}
+
+.policy-note {
+  color: var(--text-muted);
+}
+
+.steam-import-data {
+  font-size: 0.8rem;
+}

@@ -52,7 +52,7 @@ function stubIgdb({ catalogue = {}, genres = {}, themes = {}, modes = {} } = {})
 async function userWithSteam() {
   const list = await createList(client);
   await addGame(client, list.id, { igdb_id: 1, name: "Manual Pick" });
-  db.prepare("UPDATE users SET steam_id = ?").run(STEAM_ID);
+  db.prepare("UPDATE users SET steam_id = ?, steam_verified = 1").run(STEAM_ID);
   return list;
 }
 
@@ -141,6 +141,16 @@ describe("GET /api/stats/currently-playing from Steam", () => {
     expect(res.status).toBe(200);
     expect(res.body.source).toBe("manual");
     expect(JSON.stringify(console.error.mock.calls)).not.toContain(KEY);
+  });
+
+  it("does not use a Steam account that was typed in but never proved", async () => {
+    await userWithSteam();
+    db.prepare("UPDATE users SET steam_verified = 0").run();
+    stubSteamRecent([{ appid: 570, name: "Dota 2", playtime_2weeks: 90 }]);
+
+    const res = await client.get("/api/stats/currently-playing");
+    expect(res.body).toMatchObject({ source: "manual", steam_linked: false });
+    expect(steamCalls).toHaveLength(0);
   });
 
   it("does not call Steam for someone who has never imported", async () => {

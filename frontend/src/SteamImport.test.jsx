@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import SteamImport from './SteamImport'
 
 const SUMMARY = {
@@ -26,18 +27,36 @@ function mockApi(handlers) {
   return fetchMock
 }
 
-const enabled = { 'GET /api/import/steam/status': { body: { enabled: true } } }
+const notConnected = { 'GET /api/import/steam/status': { body: { enabled: true, linked: false, personaName: null } } }
+const connected = { 'GET /api/import/steam/status': { body: { enabled: true, linked: true, personaName: 'Gabe' } } }
 
-async function renderEnabled(handlers = {}, props = {}) {
-  const fetchMock = mockApi({ ...enabled, ...handlers })
+function show(props = {}) {
   const onImported = vi.fn()
-  render(<SteamImport listId="7" onImported={onImported} {...props} />)
+  render(
+    <MemoryRouter>
+      <SteamImport listId="7" onImported={onImported} {...props} />
+    </MemoryRouter>
+  )
+  return onImported
+}
+
+async function renderConnected(handlers = {}, props = {}) {
+  const fetchMock = mockApi({ ...connected, ...handlers })
+  const onImported = show(props)
   await screen.findByRole('heading', { name: 'Import from Steam' })
+  await screen.findByText('Gabe')
   return { fetchMock, onImported }
 }
 
-const type = (value) => fireEvent.change(screen.getByLabelText('Steam profile'), { target: { value } })
-const submit = () => fireEvent.click(screen.getByRole('button', { name: /^Import/ }))
+async function renderNotConnected(handlers = {}) {
+  const fetchMock = mockApi({ ...notConnected, ...handlers })
+  show()
+  await screen.findByRole('heading', { name: 'Import from Steam' })
+  return { fetchMock }
+}
+
+const importButton = () => screen.getByRole('button', { name: /^Import|Importing/ })
+const posts = (fetchMock) => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')
 
 afterEach(() => {
   cleanup()
@@ -47,52 +66,87 @@ afterEach(() => {
 describe('when it is available', () => {
   it('stays hidden if the server has no Steam key', async () => {
     mockApi({ 'GET /api/import/steam/status': { body: { enabled: false } } })
-    const { container } = render(<SteamImport listId="7" />)
+    const { container } = render(
+      <MemoryRouter>
+        <SteamImport listId="7" />
+      </MemoryRouter>
+    )
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     expect(container.textContent).toBe('')
   })
 
   it('stays hidden if the status check fails', async () => {
     mockApi({ 'GET /api/import/steam/status': { status: 500, body: { error: 'down' } } })
-    const { container } = render(<SteamImport listId="7" />)
+    const { container } = render(
+      <MemoryRouter>
+        <SteamImport listId="7" />
+      </MemoryRouter>
+    )
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     expect(container.textContent).toBe('')
   })
+})
 
-  it('explains what to do and what happens to the games', async () => {
-    await renderEnabled()
-    expect(screen.getByText(/Game details/)).toBeTruthy()
-    expect(screen.getByText(/added as Backlog, with your hours played/)).toBeTruthy()
-    expect(screen.getByText(/only import your own library/)).toBeTruthy()
+describe('before connecting', () => {
+  it("offers Valve's sign-in button, which goes to the sign-in route", async () => {
+    await renderNotConnected()
+    const connect = screen.getByRole('link', { name: 'Sign in through Steam' })
+    expect(connect.getAttribute('href')).toMatch(/\/api\/auth\/steam\/start$/)
+    const image = connect.querySelector('img')
+    expect(image.getAttribute('src')).toBe('/sits_01.png')
+    expect([image.getAttribute('width'), image.getAttribute('height')]).toEqual(['180', '35'])
+    expect(screen.getByText(/we never see your password/)).toBeTruthy()
   })
 
-  it('keeps the button disabled until something is typed', async () => {
-    await renderEnabled()
-    const button = screen.getByRole('button', { name: 'Import' })
-    expect(button.disabled).toBe(true)
-    type('   ')
-    expect(button.disabled).toBe(true)
-    type('gaben')
-    expect(button.disabled).toBe(false)
+  it('has no way to type in a profile, and no import button, until an account is connected', async () => {
+    await renderNotConnected()
+    expect(screen.queryByLabelText('Steam profile')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
+  })
+})
+
+describe('telling the user what we do with their Steam data', () => {
+  it.each([
+    ['before connecting', renderNotConnected],
+    ['once connected', renderConnected],
+  ])('says what is stored and when Steam is read, with a link to the privacy page, %s', async (_label, render) => {
+    await render()
+    expect(screen.getByText(/We store your Steam ID, your Steam display name and the hours you have played/)).toBeTruthy()
+    expect(screen.getByText(/only when you ask/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'How we use your Steam data' }).getAttribute('href')).toBe('/privacy')
+  })
+})
+
+describe('once connected', () => {
+  it('shows who is connected and explains the import', async () => {
+    await renderConnected()
+    expect(screen.getByText('Gabe')).toBeTruthy()
+    expect(screen.getByText(/Game details/)).toBeTruthy()
+    expect(screen.getByText(/added as Backlog, with your hours played/)).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Sign in through Steam' })).toBeNull()
+  })
+
+  it('sends only the list, never a profile, with the cookie', async () => {
+    const { fetchMock } = await renderConnected({ 'POST /api/import/steam': { body: SUMMARY } })
+    fireEvent.click(importButton())
+    await screen.findByRole('status')
+
+    const call = posts(fetchMock)[0]
+    expect(JSON.parse(call[1].body)).toEqual({ listId: 7 })
+    expect(call[1].credentials).toBe('include')
+  })
+
+  it('does not read Steam until the button is pressed', async () => {
+    const { fetchMock } = await renderConnected({ 'POST /api/import/steam': { body: SUMMARY } })
+    expect(posts(fetchMock)).toHaveLength(0)
   })
 })
 
 describe('importing', () => {
-  it('sends the list as a number and the text trimmed, with the cookie', async () => {
-    const { fetchMock } = await renderEnabled({ 'POST /api/import/steam': { body: SUMMARY } })
-    type('  https://steamcommunity.com/id/gaben  ')
-    submit()
-    await screen.findByRole('status')
-
-    const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
-    expect(JSON.parse(call[1].body)).toEqual({ listId: 7, steam: 'https://steamcommunity.com/id/gaben' })
-    expect(call[1].credentials).toBe('include')
-  })
-
   it('shows a summary and refreshes the list', async () => {
-    const { onImported } = await renderEnabled({ 'POST /api/import/steam': { body: SUMMARY } })
-    type('gaben')
-    submit()
+    const { onImported } = await renderConnected({ 'POST /api/import/steam': { body: SUMMARY } })
+    fireEvent.click(importButton())
 
     const summary = await screen.findByRole('status')
     expect(summary.textContent).toContain('Imported 90 games')
@@ -102,95 +156,127 @@ describe('importing', () => {
   })
 
   it('uses the singular for one game', async () => {
-    await renderEnabled({
+    await renderConnected({
       'POST /api/import/steam': { body: { ...SUMMARY, owned: 1, matched: 1, imported: 1, alreadyInList: 1, unmatched: 0, unmatchedSample: [] } },
     })
-    type('gaben')
-    submit()
+    fireEvent.click(importButton())
     const summary = await screen.findByRole('status')
     expect(summary.textContent).toContain('Imported 1 game ')
     expect(summary.textContent).toContain('1 was already in this list')
   })
 
   it('lists the items that could not be matched, with a count of any that are not shown', async () => {
-    await renderEnabled({ 'POST /api/import/steam': { body: SUMMARY } })
-    type('gaben')
-    submit()
+    await renderConnected({ 'POST /api/import/steam': { body: SUMMARY } })
+    fireEvent.click(importButton())
     await screen.findByRole('status')
 
-    expect(screen.getByText('20 Steam items couldn\'t be matched')).toBeTruthy()
+    expect(screen.getByText("20 Steam items couldn't be matched")).toBeTruthy()
     expect(screen.getByText('Some Soundtrack')).toBeTruthy()
     expect(screen.getByText('and 18 more')).toBeTruthy()
   })
 
   it('mentions games that did not fit in the list', async () => {
-    await renderEnabled({ 'POST /api/import/steam': { body: { ...SUMMARY, skippedOverCap: 5 } } })
-    type('gaben')
-    submit()
+    await renderConnected({ 'POST /api/import/steam': { body: { ...SUMMARY, skippedOverCap: 5 } } })
+    fireEvent.click(importButton())
     const summary = await screen.findByRole('status')
     expect(summary.textContent).toContain('5 games did not fit')
     expect(summary.textContent).toContain('The most played came first')
   })
 
   it('leaves out the notes that do not apply', async () => {
-    await renderEnabled({
+    await renderConnected({
       'POST /api/import/steam': { body: { ...SUMMARY, alreadyInList: 0, skippedOverCap: 0, unmatched: 0, unmatchedSample: [] } },
     })
-    type('gaben')
-    submit()
+    fireEvent.click(importButton())
     const summary = await screen.findByRole('status')
     expect(summary.textContent).not.toContain('already in this list')
     expect(summary.textContent).not.toContain('did not fit')
     expect(screen.queryByText(/couldn't be matched/)).toBeNull()
   })
 
-  it('shows the server\'s message when the import fails, and does not refresh the list', async () => {
+  it("shows the server's message when the import fails, and does not refresh the list", async () => {
     const message = "We couldn't see that profile's games. Set Game details to Public and try again."
-    const { onImported } = await renderEnabled({ 'POST /api/import/steam': { status: 422, body: { error: message } } })
-    type('gaben')
-    submit()
+    const { onImported } = await renderConnected({ 'POST /api/import/steam': { status: 422, body: { error: message } } })
+    fireEvent.click(importButton())
 
     expect((await screen.findByText(message)).className).toBe('error')
     expect(screen.queryByRole('status')).toBeNull()
     expect(onImported).not.toHaveBeenCalled()
   })
 
+  it('says so when Steam lookups are paused for the day', async () => {
+    const message = 'Steam lookups are paused for today because this site has used its daily allowance. Please try again tomorrow.'
+    await renderConnected({ 'POST /api/import/steam': { status: 503, body: { error: message } } })
+    fireEvent.click(importButton())
+    expect((await screen.findByRole('alert')).textContent).toBe(message)
+  })
+
   it('clears an earlier error or summary when you try again', async () => {
     let calls = 0
-    await renderEnabled({
-      'POST /api/import/steam': () => (++calls === 1 ? { status: 404, body: { error: 'We could not find that Steam profile.' } } : { body: SUMMARY }),
+    await renderConnected({
+      'POST /api/import/steam': () => (++calls === 1 ? { status: 502, body: { error: 'Steam is down.' } } : { body: SUMMARY }),
     })
-    type('nobody')
-    submit()
-    await screen.findByText('We could not find that Steam profile.')
+    fireEvent.click(importButton())
+    await screen.findByText('Steam is down.')
 
-    type('gaben')
-    submit()
+    fireEvent.click(importButton())
     await screen.findByRole('status')
-    expect(screen.queryByText('We could not find that Steam profile.')).toBeNull()
+    expect(screen.queryByText('Steam is down.')).toBeNull()
   })
 
   it('shows progress and blocks a second click while importing', async () => {
     let finish
-    const { fetchMock } = await renderEnabled({
+    const { fetchMock } = await renderConnected({
       'POST /api/import/steam': () => new Promise((resolve) => (finish = () => resolve({ body: SUMMARY }))),
     })
-    type('gaben')
-    submit()
+    fireEvent.click(importButton())
 
     const busyButton = await screen.findByRole('button', { name: 'Importing…' })
     expect(busyButton.disabled).toBe(true)
     fireEvent.click(busyButton)
-    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    expect(posts(fetchMock)).toHaveLength(1)
 
     finish()
     await screen.findByRole('status')
-    expect(screen.getByRole('button', { name: 'Import' }).disabled).toBe(false)
+    expect(screen.getByRole('button', { name: 'Import my library' }).disabled).toBe(false)
+  })
+})
+
+describe('disconnecting', () => {
+  it('explains what is removed and what stays before doing anything', async () => {
+    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByText(/remove your Steam ID and display name/)).toBeTruthy()
+    expect(within(dialog).getByText(/Games and hours you already imported stay in your lists/)).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
   })
 
-  it('does not call the server for an empty box', async () => {
-    const { fetchMock } = await renderEnabled({ 'POST /api/import/steam': { body: SUMMARY } })
-    fireEvent.submit(screen.getByLabelText('Steam profile').closest('form'))
-    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+  it('does nothing when cancelled', async () => {
+    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByText('Gabe')).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  })
+
+  it('disconnects when confirmed, then offers the sign-in button again', async () => {
+    const { fetchMock } = await renderConnected({ 'DELETE /api/steam/link': { body: { linked: false } } })
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' }))
+
+    expect(await screen.findByRole('link', { name: 'Sign in through Steam' })).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(true)
+  })
+
+  it('shows an error when disconnecting fails and stays connected', async () => {
+    await renderConnected({ 'DELETE /api/steam/link': { status: 500, body: { error: 'Nope' } } })
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Disconnect' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Nope')
+    expect(screen.getByText('Gabe')).toBeTruthy()
   })
 })

@@ -51,3 +51,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## "Sign in through Steam" button image
+
+`frontend/public/sits_01.png` is the sign-in button image supplied by Valve for sites that offer Steam sign-in, shown unmodified. Steam and the Steam logo are trademarks of Valve Corporation, which is not affiliated with this project. Use of the image is governed by Valve's own terms, not by an open-source license.

@@ -33,3 +33,12 @@ export function createImportLimiter(limit = Number(process.env.IMPORT_RATE_LIMIT
     message: "You have started several imports recently. Please try again later.",
   });
 }
+
+// Per-IP cap on Steam sign-in attempts. Each one costs a call to Steam, and nobody needs many.
+export function createSteamLinkLimiter(limit = Number(process.env.STEAM_LINK_RATE_LIMIT ?? 20)) {
+  return limiter({
+    windowMs: 60 * 60 * 1000,
+    limit,
+    message: "Too many Steam sign-in attempts. Please try again later.",
+  });
+}

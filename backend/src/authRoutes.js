@@ -105,6 +105,17 @@ router.post("/login", limiter, asyncHandler(async (req, res) => {
     if (guest && merge) {
       mergedLists = db.prepare("UPDATE lists SET user_id = ? WHERE user_id = ?").run(user.id, guest.id).changes;
       db.prepare("UPDATE OR IGNORE time_estimate_includes SET user_id = ? WHERE user_id = ?").run(user.id, guest.id);
+      // A Steam account the guest proved is theirs moves to the account, unless the account already has one.
+      const guestSteam = db.prepare("SELECT steam_id, steam_persona FROM users WHERE id = ? AND steam_verified = 1").get(guest.id);
+      const accountHasSteam = db.prepare("SELECT 1 FROM users WHERE id = ? AND steam_verified = 1").get(user.id);
+      if (guestSteam && !accountHasSteam) {
+        db.prepare("UPDATE users SET steam_id = NULL, steam_verified = 0, steam_persona = NULL WHERE id = ?").run(guest.id);
+        db.prepare("UPDATE users SET steam_id = ?, steam_verified = 1, steam_persona = ? WHERE id = ?").run(
+          guestSteam.steam_id,
+          guestSteam.steam_persona,
+          user.id
+        );
+      }
       db.prepare("DELETE FROM users WHERE id = ?").run(guest.id);
     } else if (req.sessionToken) {
       destroySession(req.sessionToken);

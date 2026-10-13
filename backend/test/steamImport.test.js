@@ -81,6 +81,7 @@ beforeEach(async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   client = newClient(app);
   list = await createList(client, "Steam");
+  connect();
 });
 
 afterEach(() => {
@@ -89,6 +90,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// The import reads only the account this visitor proved is theirs, so these tests start from a connected account.
+const connect = (steamId = ID) => db.prepare("UPDATE users SET steam_id = ?, steam_verified = 1").run(steamId);
 const importIt = (body, agent = client) => agent.post("/api/import/steam").send(body);
 const gamesInList = () => db.prepare("SELECT * FROM list_games WHERE list_id = ? ORDER BY igdb_id").all(list.id);
 
@@ -110,9 +113,9 @@ describe("helpers", () => {
 
 describe("GET /api/import/steam/status", () => {
   it("reports whether the server has a Steam key", async () => {
-    expect((await request(app).get("/api/import/steam/status")).body).toEqual({ enabled: true });
+    expect((await request(app).get("/api/import/steam/status")).body).toMatchObject({ enabled: true, linked: false });
     delete process.env.STEAM_API_KEY;
-    expect((await request(app).get("/api/import/steam/status")).body).toEqual({ enabled: false });
+    expect((await request(app).get("/api/import/steam/status")).body).toMatchObject({ enabled: false });
   });
 
   it("never reveals the key", async () => {
@@ -140,10 +143,16 @@ describe("a successful import", () => {
     expect(byName["Hades"].cover_url).toBeNull();
   });
 
-  it("remembers the Steam account on the user, for the recently played widget", async () => {
-    expect(db.prepare("SELECT steam_id FROM users").get().steam_id).toBeNull();
-    await importIt({ listId: list.id, steam: ID });
-    expect(db.prepare("SELECT steam_id FROM users").get().steam_id).toBe(ID);
+  it("imports the connected account's library, and ignores any other profile named in the request", async () => {
+    const res = await importIt({ listId: list.id, steam: "someone-else-entirely" });
+    expect(res.status).toBe(200);
+    expect(res.body.steamId).toBe(ID);
+    expect(steamCalls.some((c) => c.pathname.includes("ResolveVanityURL"))).toBe(false);
+    expect(steamCalls.find((c) => c.pathname.includes("GetOwnedGames")).searchParams.get("steamid")).toBe(ID);
+  });
+
+  it("needs no profile at all", async () => {
+    expect((await importIt({ listId: list.id })).status).toBe(200);
   });
 
   it("shows up in the list endpoint like any other game", async () => {
@@ -186,49 +195,43 @@ describe("a successful import", () => {
   it("works for a guest with no account", async () => {
     const guest = newClient(app);
     const guestList = await createList(guest, "Guest shelf");
-    const res = await importIt({ listId: guestList.id, steam: ID }, guest);
+    // a second person's own, different Steam account (one Steam account belongs to one BacklogVault account)
+    db.prepare("UPDATE users SET steam_id = '76561198000000002', steam_verified = 1 WHERE id = (SELECT MAX(id) FROM users)").run();
+    const res = await importIt({ listId: guestList.id }, guest);
     expect(res.status).toBe(200);
     expect(res.body.imported).toBe(3);
   });
 });
 
-describe("what the user types", () => {
-  it.each([
-    ["a 17-digit Steam ID", ID],
-    ["a profile link with an ID", `https://steamcommunity.com/profiles/${ID}/`],
-  ])("accepts %s without calling the vanity endpoint", async (label, steam) => {
-    const res = await importIt({ listId: list.id, steam });
-    expect(res.status).toBe(200);
-    expect(steamCalls.some((u) => u.pathname.includes("ResolveVanityURL"))).toBe(false);
-    expect(steamCalls.find((u) => u.pathname.includes("GetOwnedGames")).searchParams.get("steamid")).toBe(ID);
-  });
-
-  it.each([["a custom name", "gaben"], ["a custom profile link", "https://steamcommunity.com/id/gaben/"]])(
-    "resolves %s to a Steam ID first",
-    async (label, steam) => {
-      const res = await importIt({ listId: list.id, steam });
-      expect(res.status).toBe(200);
-      expect(steamCalls[0].pathname).toBe("/ISteamUser/ResolveVanityURL/v1/");
-      expect(steamCalls[0].searchParams.get("vanityurl")).toBe("gaben");
-      expect(steamCalls[1].searchParams.get("steamid")).toBe(ID);
-    }
-  );
-
-  it("answers 404 for a custom name that does not exist", async () => {
-    const res = await importIt({ listId: list.id, steam: "nobody-by-this-name" });
-    expect(res.status).toBe(404);
-    expect(res.body.error).toMatch(/couldn't find that Steam profile/);
+describe("Steam data is fetched only for the person who asks", () => {
+  it("refuses to import for someone who has not connected a Steam account, without calling Steam", async () => {
+    db.prepare("UPDATE users SET steam_id = NULL, steam_verified = 0").run();
+    const res = await importIt({ listId: list.id, steam: ID });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/Connect your Steam account first/);
+    expect(steamCalls).toHaveLength(0);
     expect(gamesInList()).toHaveLength(0);
   });
 
-  it.each([[{ steam: "" }], [{ steam: "has space" }], [{ steam: 42 }], [{}], [{ steam: "https://example.com/id/x" }]])(
-    "answers 400 for input %j without calling Steam",
-    async (body) => {
-      const res = await importIt({ listId: list.id, ...body });
-      expect(res.status).toBe(400);
-      expect(steamCalls).toHaveLength(0);
-    }
-  );
+  it("does not treat a typed-in Steam ID as proof of anything", async () => {
+    db.prepare("UPDATE users SET steam_id = ?, steam_verified = 0").run(ID); // saved but never verified
+    const res = await importIt({ listId: list.id, steam: ID });
+    expect(res.status).toBe(403);
+    expect(steamCalls).toHaveLength(0);
+  });
+
+  it("will not read another person's library even if their ID is sent", async () => {
+    const res = await importIt({ listId: list.id, steam: "76561198000000001" });
+    expect(res.status).toBe(200);
+    const ids = steamCalls.filter((c) => c.pathname.includes("GetOwnedGames")).map((c) => c.searchParams.get("steamid"));
+    expect(ids).toEqual([ID]);
+  });
+
+  it("has no endpoint that looks up a profile by name", async () => {
+    const res = await importIt({ listId: list.id, steam: "gaben" });
+    expect(steamCalls.some((c) => c.pathname.includes("ResolveVanityURL"))).toBe(false);
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("profiles Steam will not show", () => {

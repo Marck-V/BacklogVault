@@ -3,14 +3,19 @@ import db from "./db.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { findOwnedList } from "./ownership.js";
 import { createImportLimiter } from "./writeLimiters.js";
-import { SteamError, parseSteamIdentifier, resolveSteamId, fetchOwnedGames } from "./steam.js";
+import { SteamError, fetchOwnedGames } from "./steam.js";
 import { importOwnedGames } from "./steamImport.js";
 
 const router = express.Router();
 
 // The frontend uses this to show the import box only when the server has a Steam key.
+// It also says whether this visitor has connected a Steam account, and which one, so the page can offer the right buttons.
 router.get("/steam/status", (req, res) => {
-  res.json({ enabled: Boolean(process.env.STEAM_API_KEY) });
+  const enabled = Boolean(process.env.STEAM_API_KEY);
+  const linked = req.user
+    ? db.prepare("SELECT steam_id, steam_persona FROM users WHERE id = ? AND steam_verified = 1").get(req.user.id)
+    : null;
+  res.json({ enabled, linked: Boolean(linked), personaName: linked?.steam_persona ?? null });
 });
 
 router.post(
@@ -25,13 +30,17 @@ router.post(
     const list = findOwnedList(req.user?.id, listId);
     if (!list) return res.status(404).json({ error: "List not found" });
 
+    // Steam's terms allow fetching a person's Steam data only when that person asks for it. So the import reads one
+    // account only: the one this visitor proved is theirs through Steam's own sign-in. No profile can be typed in.
+    const linked = db.prepare("SELECT steam_id FROM users WHERE id = ? AND steam_verified = 1").get(req.user.id);
+    if (!linked) {
+      return res.status(403).json({ error: "Connect your Steam account first, then import your library." });
+    }
+    const steamId = linked.steam_id;
+
     try {
-      const identifier = parseSteamIdentifier(req.body?.steam);
-      const steamId = await resolveSteamId(identifier, apiKey);
       const owned = await fetchOwnedGames(steamId, apiKey);
       const summary = await importOwnedGames({ list, owned });
-      // Remember the account so the dashboard can show what you played lately without asking again.
-      db.prepare("UPDATE users SET steam_id = ? WHERE id = ?").run(steamId, req.user.id);
       res.json({ steamId, ...summary });
     } catch (err) {
       if (!(err instanceof SteamError)) throw err;

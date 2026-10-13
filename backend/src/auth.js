@@ -134,6 +134,8 @@ export function purgeStale({ guestMaxAgeDays = 90 } = {}) {
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - guestMaxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   const sessions = db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now).changes;
+  db.prepare("DELETE FROM steam_link_attempts WHERE expires_at < ?").run(now);
+  db.prepare("DELETE FROM steam_api_usage WHERE day < ?").run(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
   const guests = db.prepare("DELETE FROM users WHERE is_guest = 1 AND last_seen_at < ?").run(cutoff).changes;
   return { sessions, guests };
 }

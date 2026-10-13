@@ -26,7 +26,7 @@ export function clearDashboardCaches() {
 // last two weeks (set up automatically); anyone else, or anyone whose Steam lookup fails or comes back empty, gets the
 // games they marked as Playing by hand.
 export async function currentlyPlaying(userId, { force = false } = {}) {
-  const steamId = db.prepare("SELECT steam_id FROM users WHERE id = ?").get(userId)?.steam_id;
+  const steamId = db.prepare("SELECT steam_id FROM users WHERE id = ? AND steam_verified = 1").get(userId)?.steam_id;
   const steamLinked = Boolean(steamId);
   const manual = (steamFailed = false) => ({
     source: "manual",
