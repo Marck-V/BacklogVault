@@ -9,6 +9,17 @@ export function trustProxyHops(value = process.env.TRUST_PROXY) {
   return Number(value);
 }
 
+// The request header a host's proxy uses to tell us the visitor's real address, for hosts that set their own header
+// instead of appending to X-Forwarded-For. Railway sets X-Real-IP; it passes a visitor's own X-Forwarded-For through
+// untouched, so trusting that would let anyone pick their address and dodge every per-IP limit. Empty means off.
+export function clientIpHeader(value = process.env.CLIENT_IP_HEADER) {
+  if (value === undefined || value === "") return null;
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(value)) {
+    throw new Error(`CLIENT_IP_HEADER must be a header name such as X-Real-IP, got "${value}"`);
+  }
+  return value.toLowerCase();
+}
+
 function originOf(value, name) {
   let url;
   try {

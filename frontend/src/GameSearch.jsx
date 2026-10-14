@@ -57,6 +57,7 @@ export default function GameSearch({ lists, defaultListId, onAdded }) {
           type="search"
           aria-label="Search for a game"
           name="q"
+          maxLength={100}
           autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

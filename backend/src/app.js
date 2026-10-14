@@ -6,8 +6,10 @@ import compression from "compression";
 import { igdbRequest } from "./igdbClient.js";
 import { escapeIgdbString } from "./igdbQuery.js";
 import { createIgdbLimiter } from "./igdbLimiter.js";
-import { trustProxyHops } from "./config.js";
+import { trustProxyHops, clientIpHeader } from "./config.js";
+import { useClientIpHeader } from "./clientIp.js";
 import { createWriteLimiter } from "./writeLimiters.js";
+import { LIMITS } from "./limits.js";
 import { attachUser } from "./auth.js";
 import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
@@ -24,22 +26,31 @@ import { siteRouter } from "./staticSite.js";
 
 const app = express();
 
-// Tell Express how many proxies sit in front, so rate limiting sees the real client IP (see config.js).
+// Where the real visitor address comes from, which every per-IP rate limit depends on (see config.js). On a host whose
+// proxy sets its own header (Railway: X-Real-IP), use that header and ignore X-Forwarded-For entirely. Otherwise, count
+// the proxies in front so Express can read X-Forwarded-For safely (none locally).
+const ipHeader = clientIpHeader();
 const proxyHops = trustProxyHops();
-if (proxyHops > 0) app.set("trust proxy", proxyHops);
+if (ipHeader) {
+  if (proxyHops > 0) console.warn(`TRUST_PROXY is ignored because CLIENT_IP_HEADER is set (${ipHeader}).`);
+  app.use(useClientIpHeader(ipHeader));
+} else if (proxyHops > 0) {
+  app.set("trust proxy", proxyHops);
+}
 
 // Standard security headers (and no X-Powered-By, which tells attackers which framework to target).
 app.use(helmet());
 // gzip for everything worth compressing (the main script shrinks to about a third).
 app.use(compression());
 
-// Credentialed CORS cannot use "*": only the listed origins may send the session cookie cross-origin (local dev).
-app.use(
-  cors({
-    origin: (process.env.CORS_ORIGIN ?? "http://localhost:5173").split(","),
-    credentials: true,
-  })
-);
+// Credentialed CORS cannot use "*": only the listed origins may send the session cookie cross-origin. That is only
+// needed in local development, where Vite serves the site on another port. In production the site and the API share
+// one address, so no other origin is allowed unless CORS_ORIGIN says so.
+const corsOrigins = (process.env.CORS_ORIGIN ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:5173"))
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+if (corsOrigins.length > 0) app.use(cors({ origin: corsOrigins, credentials: true }));
 // Bodies are small everywhere except restoring a backup file, which may hold thousands of games.
 const smallJson = express.json();
 const backupJson = express.json({ limit: "4mb" });
@@ -59,6 +70,9 @@ app.get("/api/games/search", async (req, res) => {
   const search = req.query.q;
   if (typeof search !== "string" || !search.trim()) {
     return res.status(400).json({ error: "Missing query param 'q'" });
+  }
+  if (search.length > LIMITS.searchQuery) {
+    return res.status(400).json({ error: `Search text must be at most ${LIMITS.searchQuery} characters` });
   }
 
   try {

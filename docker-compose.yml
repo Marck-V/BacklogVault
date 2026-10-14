@@ -27,7 +27,7 @@ services:
       # Sign up and sign in are off by default: visitors get a library on this device with no account. "true" turns them on.
       ENABLE_ACCOUNTS: ${ENABLE_ACCOUNTS:-false}
       # Nothing sits in front of the app locally, so it must not trust X-Forwarded-For (a visitor could fake it).
-      # On Railway this is 1: Railway's own proxy.
+      # On Railway, set CLIENT_IP_HEADER=X-Real-IP instead: Railway passes a visitor's own X-Forwarded-For through.
       TRUST_PROXY: ${TRUST_PROXY_HOPS:-0}
       # Browsers only keep Secure cookies over HTTPS (plus localhost); "true" on Railway, which serves HTTPS.
       COOKIE_SECURE: "false"
