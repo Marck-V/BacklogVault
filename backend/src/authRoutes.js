@@ -4,6 +4,7 @@ import db from "./db.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { accountsEnabled } from "./config.js";
 import { forgetRecentlyPlayed } from "./dashboardData.js";
+import { forgetAchievements } from "./steamAchievements.js";
 import {
   hashPassword,
   verifyPassword,
@@ -71,6 +72,7 @@ router.delete("/me", (req, res) => {
   })();
 
   forgetRecentlyPlayed(req.user.id);
+  forgetAchievements(req.user.id);
   clearSessionCookie(res);
   res.json({ deleted });
 });

@@ -26,14 +26,17 @@ export default function PrivacyPage() {
       </p>
       <p>
         After you connect, we read your Steam data <strong>only when you ask us to</strong>: when you press Import, when
-        you press Refresh from Steam, and when you open your dashboard (which shows what you played in the last two
-        weeks). We never read the Steam data of anyone who has not connected their own account.
+        you press Refresh from Steam, when you open your dashboard (which shows what you played in the last two
+        weeks), and when you open a game&apos;s details (which shows how many of its achievements you have unlocked). We never read the Steam data of anyone who has not connected their own account.
       </p>
 
       <h2>What we store</h2>
       <ul>
         <li>Your Steam ID (the number that identifies your account) and your Steam display name.</li>
-        <li>For each game you import, the hours you have played, kept with that game in your list.</li>
+        <li>
+          For each game you import, the hours you have played, kept with that game in your list. Pressing Refresh from
+          Steam raises the hours of games already in your lists to match Steam; it never lowers them and never adds games.
+        </li>
         <li>The games in your lists, and the status, rating, hours and notes you add to them.</li>
         {accountsEnabled && <li>If you create an account, your email address and a scrambled (hashed) password.</li>}
         <li>
@@ -43,7 +46,8 @@ export default function PrivacyPage() {
         </li>
         <li>
           Your recently played games are kept in the server&apos;s memory for ten minutes to avoid asking Steam again
-          and again. They are not saved to the database.
+          and again. They are not saved to the database. The same goes for the number of achievements you have unlocked in
+          a game you opened.
         </li>
       </ul>
 

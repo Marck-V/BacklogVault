@@ -39,7 +39,8 @@ function spendCall() {
   })();
 }
 
-async function steamGet(path, params, apiKey) {
+// okStatuses: HTTP statuses whose body is still an answer we can read (Steam reports some private or empty cases that way).
+async function steamGet(path, params, apiKey, { okStatuses = [] } = {}) {
   spendCall();
   const url = new URL(`${STEAM_API}${path}`);
   url.search = new URLSearchParams({ ...params, key: apiKey, format: "json" }).toString();
@@ -51,7 +52,7 @@ async function steamGet(path, params, apiKey) {
     // Deliberately not rethrown or logged: the message of a failed fetch can include the URL, and so the key.
     throw unavailable();
   }
-  if (!res.ok) throw unavailable(res.status);
+  if (!res.ok && !okStatuses.includes(res.status)) throw unavailable(res.status);
 
   try {
     return await res.json();
@@ -122,4 +123,24 @@ export async function fetchPersonaName(steamId, apiKey) {
   } catch {
     return null;
   }
+}
+
+// How many of one game's achievements the account has unlocked. Steam answers with a "success: false" body (and an HTTP
+// 400 or 403) when the profile is not public or the game has no achievements, so those are told apart by their message.
+export async function fetchAchievements(steamId, appId, apiKey) {
+  const body = await steamGet(
+    "/ISteamUserStats/GetPlayerAchievements/v1/",
+    { steamid: steamId, appid: appId },
+    apiKey,
+    { okStatuses: [400, 403] }
+  );
+  const stats = body?.playerstats;
+  if (!stats || typeof stats !== "object") throw unavailable();
+
+  if (stats.success === true) {
+    const list = Array.isArray(stats.achievements) ? stats.achievements : [];
+    if (list.length === 0) return { status: "none" };
+    return { status: "ok", total: list.length, unlocked: list.filter((a) => a?.achieved === 1).length };
+  }
+  return /not public/i.test(String(stats.error ?? "")) ? { status: "private" } : { status: "none" };
 }

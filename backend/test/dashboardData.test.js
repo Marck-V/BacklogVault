@@ -196,12 +196,15 @@ describe("GET /api/stats/currently-playing from Steam", () => {
 });
 
 describe("POST /api/steam/refresh", () => {
+  // The refresh also reads the owned-games list for hours; these tests are about the recently played call.
+  const recentCalls = () => steamCalls.filter((u) => u.pathname.includes("GetRecentlyPlayedGames"));
+
   it("re-reads Steam even though the last answer is cached", async () => {
     await userWithSteam();
     stubSteamRecent([{ appid: 570, name: "Dota 2", playtime_2weeks: 90 }]);
     stubIgdb({ catalogue: { 570: { id: 2963, name: "Dota 2" }, 220: { id: 233, name: "Half-Life 2" } } });
     await client.get("/api/stats/currently-playing");
-    expect(steamCalls).toHaveLength(1);
+    expect(recentCalls()).toHaveLength(1);
 
     stubSteamRecent([
       { appid: 220, name: "Half-Life 2", playtime_2weeks: 300 },
@@ -209,13 +212,13 @@ describe("POST /api/steam/refresh", () => {
     ]);
     const res = await client.post("/api/steam/refresh");
     expect(res.status).toBe(200);
-    expect(steamCalls).toHaveLength(1); // the new stub's own call
+    expect(recentCalls()).toHaveLength(1); // the new stub's own call
     expect(res.body.currently_playing.games.map((g) => g.name)).toEqual(["Half-Life 2", "Dota 2"]);
 
     // and the page's next normal load sees the fresh answer without asking Steam again
     const after = await client.get("/api/stats/currently-playing");
     expect(after.body.games.map((g) => g.name)).toEqual(["Half-Life 2", "Dota 2"]);
-    expect(steamCalls).toHaveLength(1);
+    expect(recentCalls()).toHaveLength(1);
   });
 
   it("makes you wait between refreshes", async () => {
@@ -227,7 +230,7 @@ describe("POST /api/steam/refresh", () => {
     const second = await client.post("/api/steam/refresh");
     expect(second.status).toBe(429);
     expect(Number(second.headers["retry-after"])).toBeGreaterThan(0);
-    expect(steamCalls).toHaveLength(1);
+    expect(recentCalls()).toHaveLength(1);
   });
 
   it("needs a session and a linked Steam account", async () => {

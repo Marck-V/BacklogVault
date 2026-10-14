@@ -243,6 +243,51 @@ describe('Dashboard', () => {
       expect(screen.getByText('Updated from Steam.')).toBeTruthy()
     })
 
+    describe('hours', () => {
+      const withHours = (hours) => ({ currently_playing: steamPlaying(['Alpha']), hours })
+
+      async function pressRefresh() {
+        vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+        vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Alpha']))
+        render(<Dashboard />)
+        fireEvent.click(await screen.findByRole('button', { name: /Refresh from Steam/ }))
+      }
+
+      it('says how many games got new hours, and reads the totals again', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue(withHours({ status: 'ok', updated: 12 }))
+        await pressRefresh()
+        expect(await screen.findByText('Updated from Steam. Hours updated for 12 games.')).toBeTruthy()
+        expect(vi.mocked(getTimeToBeatStats).mock.calls.length).toBeGreaterThanOrEqual(2)
+      })
+
+      it('uses the singular for one game', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue(withHours({ status: 'ok', updated: 1 }))
+        await pressRefresh()
+        expect(await screen.findByText('Updated from Steam. Hours updated for 1 game.')).toBeTruthy()
+      })
+
+      it('says when hours were already up to date, without reloading the totals', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue(withHours({ status: 'ok', updated: 0 }))
+        await pressRefresh()
+        expect(await screen.findByText('Updated from Steam. Hours were already up to date.')).toBeTruthy()
+        expect(vi.mocked(getTimeToBeatStats)).toHaveBeenCalledTimes(1)
+      })
+
+      it('says when hours were checked recently', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue(withHours({ status: 'recent' }))
+        await pressRefresh()
+        expect(await screen.findByText(/Hours were checked a few minutes ago/)).toBeTruthy()
+      })
+
+      it('shows the reason when hours could not be updated, while recently played still updates', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue(
+          withHours({ status: 'error', message: "We couldn't see that profile's games." })
+        )
+        await pressRefresh()
+        expect(await screen.findByText(/Recently played is updated, but hours were not: We couldn't see/)).toBeTruthy()
+      })
+    })
+
     it('disables the button while it works', async () => {
       vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
       vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamPlaying(['Alpha']))

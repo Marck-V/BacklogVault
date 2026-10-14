@@ -84,6 +84,11 @@ export function getGameDetails(igdbId) {
   return request(`/api/games/${igdbId}/details`)
 }
 
+// { status: 'ok', total, unlocked } for a connected Steam account; any other status means there is nothing to show.
+export function getGameAchievements(igdbId) {
+  return request(`/api/games/${igdbId}/achievements`)
+}
+
 export function getTimeToBeatStats() {
   return request('/api/stats/time-to-beat')
 }
