@@ -1,4 +1,8 @@
-# Docker keeps container logs forever by default, which fills a small disk. Keep at most 3 files of 10 MB per service.
+# The whole site as one container, built from the Dockerfile at the root: the Node API, which also serves the React
+# app. Run with: docker compose --env-file backend/.env up -d --build, then open http://localhost:8080.
+# Production (Railway) builds the same Dockerfile.
+
+# Docker keeps container logs forever by default, which fills a small disk. Keep at most 3 files of 10 MB.
 x-logging: &default-logging
   driver: json-file
   options:
@@ -6,63 +10,37 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  api:
-    build: ./backend
+  app:
+    build:
+      context: .
+      args:
+        # Shown on the privacy page (set both before the site is public)
+        DATA_COUNTRY: ${DATA_COUNTRY:-}
+        CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     environment:
       IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see .env.example)}
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
-      # Optional: a Steam Web API key turns on the "Import from Steam" feature (leave empty to switch it off)
+      # Optional: a Steam Web API key turns on "Connect Steam" (leave empty to switch it off)
       STEAM_API_KEY: ${STEAM_API_KEY:-}
-      # The address visitors type to reach the site. Steam sends people back here after "Connect Steam", so it must be
-      # the real public address once deployed (for example https://vault.example.com)
+      # The address visitors type to reach the site; Steam sends people back here after "Connect Steam".
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       # Sign up and sign in are off by default: visitors get a library on this device with no account. "true" turns them on.
       ENABLE_ACCOUNTS: ${ENABLE_ACCOUNTS:-false}
-      # Number of proxies in front of the API, so rate limits see the real visitor IP. Caddy is the only one.
-      TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}
-      # Browsers only keep Secure cookies over HTTPS (plus localhost); set to "true" once the site is served over HTTPS
+      # Nothing sits in front of the app locally, so it must not trust X-Forwarded-For (a visitor could fake it).
+      # On Railway this is 1: Railway's own proxy.
+      TRUST_PROXY: ${TRUST_PROXY_HOPS:-0}
+      # Browsers only keep Secure cookies over HTTPS (plus localhost); "true" on Railway, which serves HTTPS.
       COOKIE_SECURE: "false"
+    ports:
+      - "8080:4000"
     volumes:
       - backlog-data:/data
     logging: *default-logging
-    # A ceiling, not a reservation: a runaway process is stopped before it can take the whole (small) server down
+    # A ceiling, not a reservation: a runaway process is stopped before it can take the whole machine down
     mem_limit: 384m
-    security_opt:
-      - no-new-privileges:true
-    restart: unless-stopped
-
-  web:
-    build:
-      context: ./frontend
-      args:
-        # Shown on the privacy page (set both in .env before the site is public)
-        VITE_DATA_COUNTRY: ${DATA_COUNTRY:-}
-        VITE_CONTACT_EMAIL: ${CONTACT_EMAIL:-}
-    environment:
-      # ":80" serves plain HTTP (local runs and CI). On the server, set SITE_ADDRESS to the public name and Caddy
-      # gets and renews the HTTPS certificate itself.
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
-    ports:
-      - "8080:80"
-    volumes:
-      # Caddy keeps its certificates here; losing them means asking Let's Encrypt again, which is rate limited.
-      - caddy-data:/data
-    depends_on:
-      - api
-    # Without this, "running" is taken to mean "ready", but the web server is still starting up for a moment after the
-    # container starts, and anything that connects in that gap (a deploy check, CI) gets a connection reset.
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-    logging: *default-logging
-    mem_limit: 64m
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
 
 volumes:
   backlog-data:
-  caddy-data:
