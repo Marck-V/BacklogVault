@@ -1,0 +1,84 @@
+# The only web server: it serves the built React site, forwards /api to the Node API, and on the real server gets and
+# renews the HTTPS certificate by itself.
+{
+	# No admin endpoint: the configuration only changes by deploying a new image.
+	admin off
+}
+
+# SITE_ADDRESS is ":80" locally (plain HTTP, no certificate). On the server it is the public name, for example
+# backlogvault.duckdns.org, and Caddy then serves HTTPS on 443 and redirects HTTP to it.
+{$SITE_ADDRESS::80} {
+	# gzip only, at level 6 like nginx used. zstd came out bigger than gzip for the main script (97.9 KB against
+	# 96.5 KB), and Caddy's default gzip level made it bigger still.
+	encode {
+		gzip 6
+	}
+	header -Server
+
+	# Error pages (a missing file's 404) are written separately, so they need the same Server header removal.
+	handle_errors {
+		header -Server
+		respond "{err.status_code} {err.status_text}"
+	}
+
+	# The API sets its own security headers, so this block adds none.
+	handle /api/* {
+		# A backup file with thousands of games can be a couple of megabytes (the API caps JSON at 4 MB). Anything over
+		# 5 MiB is refused at once from its declared size, before a byte is forwarded; reading it first and cutting it off
+		# part way left the upload hanging in testing. max_size still covers uploads that do not declare a size.
+		@tooLarge expression `{header.Content-Length} != "" && int({header.Content-Length}) > 5242880`
+		respond @tooLarge "Request body too large" 413 {
+			close
+		}
+		request_body {
+			max_size 5MiB
+		}
+		# Caddy ignores any X-Forwarded-For a visitor sends and sets it to their real address, so the API's per-visitor
+		# limits (TRUST_PROXY=1) cannot be dodged by faking the header.
+		reverse_proxy api:4000
+	}
+
+	handle {
+		root * /srv
+
+		header {
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://images.igdb.com; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+			# Browsers ignore this over plain HTTP, so it is harmless locally and on in production.
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		}
+
+		# Hashed build files never change, so browsers may keep them for a year. Only real files get this: a missing
+		# file's 404 must not be cached for a year. Everything else, the page above all, is re-checked on every visit so
+		# a new deploy is picked up. The two matchers never overlap, so neither header can overwrite the other.
+		@hashed {
+			path /assets/*
+			file
+		}
+		@notHashed not {
+			path /assets/*
+			file
+		}
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		header @notHashed Cache-Control "no-cache"
+
+		# Single-page app: unknown paths (for example /lists/4) get index.html so React Router can handle them.
+		# Missing files under /assets/ stay a real 404.
+		@spa {
+			not path /assets/*
+			not file
+		}
+		rewrite @spa /index.html
+
+		file_server
+	}
+}
+
+# Health check for Docker only (this port is not published). It answers even when the public site is redirecting to
+# HTTPS, which a check against port 80 would not.
+:8081 {
+	respond "ok" 200
+}

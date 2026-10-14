@@ -18,8 +18,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       # Sign up and sign in are off by default: visitors get a library on this device with no account. "true" turns them on.
       ENABLE_ACCOUNTS: ${ENABLE_ACCOUNTS:-false}
-      # Number of proxies in front of the API, so rate limits see the real visitor IP. nginx alone is 1 (the default);
-      # set TRUST_PROXY_HOPS=2 in .env when Caddy sits in front of nginx
+      # Number of proxies in front of the API, so rate limits see the real visitor IP. Caddy is the only one.
       TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}
       # Browsers only keep Secure cookies over HTTPS (plus localhost); set to "true" once the site is served over HTTPS
       COOKIE_SECURE: "false"
@@ -39,14 +38,21 @@ services:
         # Shown on the privacy page (set both in .env before the site is public)
         VITE_DATA_COUNTRY: ${DATA_COUNTRY:-}
         VITE_CONTACT_EMAIL: ${CONTACT_EMAIL:-}
+    environment:
+      # ":80" serves plain HTTP (local runs and CI). On the server, set SITE_ADDRESS to the public name and Caddy
+      # gets and renews the HTTPS certificate itself.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - "8080:80"
+    volumes:
+      # Caddy keeps its certificates here; losing them means asking Let's Encrypt again, which is rate limited.
+      - caddy-data:/data
     depends_on:
       - api
-    # Without this, "running" is taken to mean "ready", but nginx is still starting up for a moment after the
+    # Without this, "running" is taken to mean "ready", but the web server is still starting up for a moment after the
     # container starts, and anything that connects in that gap (a deploy check, CI) gets a connection reset.
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -59,3 +65,4 @@ services:
 
 volumes:
   backlog-data:
+  caddy-data:

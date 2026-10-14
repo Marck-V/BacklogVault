@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import request from "supertest";
 
-// The production chain is: visitor -> Caddy -> nginx -> API. Caddy puts the visitor in X-Forwarded-For and
-// nginx appends the address it saw (Caddy's). supertest plays the part of nginx, the last hop before the API.
+// A chain of two proxies before the API, for example a CDN in front of Caddy: the first puts the visitor in
+// X-Forwarded-For and the second appends the address it saw. supertest plays the part of the last hop. (Production
+// today has one proxy, Caddy; this test pins down how TRUST_PROXY counts hops, so it stays useful either way.)
 const CADDY = "172.18.0.5";
 
 async function loadApp(hops) {
@@ -23,7 +24,7 @@ afterEach(() => {
   process.env.AUTH_RATE_LIMIT_MAX = "1000";
 });
 
-describe("per-IP limits behind two proxies (Caddy then nginx)", () => {
+describe("per-IP limits behind two proxies", () => {
   it("counts each visitor separately when TRUST_PROXY matches the chain (2)", async () => {
     const app = await loadApp(2);
 
