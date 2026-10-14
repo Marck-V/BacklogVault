@@ -6,6 +6,7 @@ import { appUrl, publicUrl } from "./config.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { SteamError, fetchPersonaName } from "./steam.js";
 import { forgetRecentlyPlayed } from "./dashboardData.js";
+import { forgetAchievements } from "./steamAchievements.js";
 import { buildLoginUrl, claimedSteamId, readOpenIdParams, steamConfirms } from "./steamOpenId.js";
 import { createGuestLimiter, createSteamLinkLimiter } from "./writeLimiters.js";
 
@@ -114,6 +115,7 @@ router.delete("/steam/link", (req, res) => {
   })();
 
   forgetRecentlyPlayed(req.user.id);
+  forgetAchievements(req.user.id);
   res.json({ linked: false, deleted });
 });
 

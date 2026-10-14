@@ -13,6 +13,10 @@ import listsRouter from "./listsRoutes.js";
 import importRouter from "./importRoutes.js";
 import steamLinkRouter from "./steamLinkRoutes.js";
 import libraryRouter from "./libraryRoutes.js";
+import { DETAIL_FIELDS, ageRatings, audioLanguages, storeLinks } from "./gameDetails.js";
+import { gameAchievements, forgetAchievements } from "./steamAchievements.js";
+import { refreshPlaytime } from "./steamRefresh.js";
+import { SteamError } from "./steam.js";
 import db from "./db.js";
 import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.js";
 
@@ -72,7 +76,7 @@ app.get("/api/games/:id/details", async (req, res) => {
   try {
     const [game] = await igdbRequest(
       "games",
-      `fields name,first_release_date,summary,involved_companies.company.name,involved_companies.developer; where id = ${id};`
+      `fields ${DETAIL_FIELDS}; where id = ${id};`
     );
     const [timeToBeat] = await igdbRequest(
       "game_time_to_beats",
@@ -86,6 +90,9 @@ app.get("/api/games/:id/details", async (req, res) => {
       summary: game?.summary ?? null,
       first_release_date: game?.first_release_date ?? null,
       developer,
+      age_ratings: ageRatings(game),
+      audio_languages: audioLanguages(game),
+      store_links: storeLinks(game),
       time_to_beat_main_seconds: timeToBeat?.normally ?? null,
       time_to_beat_completionist_seconds: timeToBeat?.completely ?? null,
     });
@@ -93,6 +100,14 @@ app.get("/api/games/:id/details", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch game details from IGDB" });
   }
+});
+
+// Steam achievements for one game, for the signed-in visitor's connected Steam account only. Always answers 200 with a
+// status (see gameAchievements), so the window can simply leave the line out when there is nothing to say.
+app.get("/api/games/:id/achievements", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Invalid game id" });
+  res.json(await gameAchievements(req.user?.id, id));
 });
 
 // IGDB's time-to-beat numbers are crowd-sourced, and endless or multiplayer games (VRChat, Bloons TD 6)
@@ -254,11 +269,19 @@ app.get("/api/stats/currently-playing", async (req, res) => {
   }
 });
 
-// The dashboard's refresh button: re-reads small, quickly changing things from Steam. For now that is the
-// recently played list; anything similar added later goes in the same response. A short cooldown per user keeps
-// the button from being used to hammer Steam and IGDB.
+// The dashboard's refresh button: re-reads small, quickly changing things from Steam. That is the recently played
+// list, the hours of the games already in the library, and (by forgetting what was remembered) the achievement counts
+// of games opened next. A short cooldown per user keeps the button from being used to hammer Steam and IGDB, and the
+// hours part, which reads the whole owned-games list, has a longer one of its own.
 const REFRESH_COOLDOWN_MS = 30 * 1000;
+const HOURS_COOLDOWN_MS = 5 * 60 * 1000;
 const lastRefresh = new Map();
+const lastHoursRefresh = new Map();
+
+function rememberTime(map, userId) {
+  if (map.size >= 5000) map.delete(map.keys().next().value);
+  map.set(userId, Date.now());
+}
 
 app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Not signed in" });
@@ -273,9 +296,29 @@ app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
       return res.status(409).json({ error: "Import your Steam library first so we know which account to refresh." });
     }
     // Only a real attempt starts the cooldown; a request that was turned away above does not.
-    if (lastRefresh.size >= 5000) lastRefresh.delete(lastRefresh.keys().next().value);
-    lastRefresh.set(req.user.id, Date.now());
-    res.json({ currently_playing });
+    rememberTime(lastRefresh, req.user.id);
+    forgetAchievements(req.user.id);
+
+    // Hours are best effort: if Steam, IGDB or the profile's privacy gets in the way, the recently played part above
+    // still succeeded, and the answer says why the hours were not touched.
+    let hours;
+    if (Date.now() - (lastHoursRefresh.get(req.user.id) ?? 0) < HOURS_COOLDOWN_MS) {
+      hours = { status: "recent" };
+    } else {
+      const steamId = db.prepare("SELECT steam_id FROM users WHERE id = ? AND steam_verified = 1").get(req.user.id)?.steam_id;
+      try {
+        hours = await refreshPlaytime(req.user.id, steamId, process.env.STEAM_API_KEY);
+        rememberTime(lastHoursRefresh, req.user.id);
+      } catch (err) {
+        if (!(err instanceof SteamError)) console.error(err);
+        else console.error(`Hours refresh failed: ${err.kind}`);
+        hours = {
+          status: "error",
+          message: err instanceof SteamError ? err.message : "Something went wrong while updating hours.",
+        };
+      }
+    }
+    res.json({ currently_playing, hours });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to refresh from Steam" });

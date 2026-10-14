@@ -1,8 +1,8 @@
 import { useEffect, useId, useState } from 'react'
-import { getGameDetails, updateGameEntry } from './api'
+import { getGameAchievements, getGameDetails, updateGameEntry } from './api'
 import Modal from './Modal'
 import { STATUSES } from './statuses'
-import { X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 
 function formatDate(unixSeconds) {
   if (!unixSeconds) return 'Unknown'
@@ -16,8 +16,38 @@ function formatHours(seconds) {
 
 const RATING_STATUSES = ['Completed', 'Dropped']
 
+function AchievementsLine({ achievements }) {
+  if (achievements?.status === 'private') {
+    return (
+      <>
+        <dt>Steam Achievements</dt>
+        <dd>
+          We can&apos;t see them. In Steam, set your profile&apos;s Game details to Public, then open this game again.
+        </dd>
+      </>
+    )
+  }
+  if (achievements?.status !== 'ok') return null
+  const percent = Math.round((achievements.unlocked / achievements.total) * 100)
+  return (
+    <>
+      <dt>Steam Achievements</dt>
+      <dd>
+        {achievements.unlocked} of {achievements.total} unlocked ({percent}%)
+        <progress
+          className="achievement-bar"
+          value={achievements.unlocked}
+          max={achievements.total}
+          aria-label="Steam achievements unlocked"
+        />
+      </dd>
+    </>
+  )
+}
+
 export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
   const [details, setDetails] = useState(null)
+  const [achievements, setAchievements] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState(game.status)
@@ -34,6 +64,18 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
       .then(setDetails)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
+  }, [game.igdb_id])
+
+  // Separate from the details: it asks Steam, so it can be slower, and a failure must not hide everything else.
+  useEffect(() => {
+    setAchievements(null)
+    let current = true
+    getGameAchievements(game.igdb_id)
+      .then((result) => current && setAchievements(result))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
   }, [game.igdb_id])
 
   const showRating = RATING_STATUSES.includes(status)
@@ -154,11 +196,42 @@ export default function GameDetailsModal({ game, listId, onClose, onUpdate }) {
           <dt>Release Date</dt>
           <dd>{formatDate(details.first_release_date)}</dd>
 
+          <dt>Age Rating</dt>
+          <dd>
+            {details.age_ratings?.length
+              ? details.age_ratings.map((r) => `${r.organization} ${r.rating}`).join(' · ')
+              : 'Not listed'}
+          </dd>
+
+          <dt>Full Audio</dt>
+          <dd>{details.audio_languages?.length ? details.audio_languages.join(', ') : 'Not listed'}</dd>
+
           <dt>Time to Beat (Main Story)</dt>
           <dd>{formatHours(details.time_to_beat_main_seconds)}</dd>
 
           <dt>Time to Beat (100%)</dt>
           <dd>{formatHours(details.time_to_beat_completionist_seconds)}</dd>
+
+          <AchievementsLine achievements={achievements} />
+
+          {details.store_links?.length > 0 && (
+            <>
+              <dt>Find It On</dt>
+              <dd>
+                <ul className="store-links">
+                  {details.store_links.map((link) => (
+                    <li key={link.key}>
+                      <a href={link.url} target="_blank" rel="noopener noreferrer">
+                        {link.label}
+                        <ExternalLink size={13} aria-hidden="true" />
+                        <span className="visually-hidden"> (opens in a new tab)</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          )}
         </dl>
       )}
     </Modal>

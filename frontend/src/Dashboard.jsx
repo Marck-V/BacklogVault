@@ -187,6 +187,24 @@ function PlayingPanel({ playing }) {
   )
 }
 
+function refreshSummary(hours) {
+  if (hours?.status === 'ok') {
+    return {
+      text:
+        hours.updated > 0
+          ? `Updated from Steam. Hours updated for ${hours.updated} ${hours.updated === 1 ? 'game' : 'games'}.`
+          : 'Updated from Steam. Hours were already up to date.',
+    }
+  }
+  if (hours?.status === 'recent') {
+    return { text: 'Updated from Steam. Hours were checked a few minutes ago, so they were left as they are.' }
+  }
+  if (hours?.status === 'error') {
+    return { error: true, text: `Recently played is updated, but hours were not: ${hours.message}` }
+  }
+  return { text: 'Updated from Steam.' }
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [playing, setPlaying] = useState({ source: 'manual', games: [] })
@@ -214,18 +232,25 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Re-reads the small, fast-changing bits from Steam. For now that is the recently played list.
+  // Re-reads the small, fast-changing bits from Steam: the recently played list, and the hours of games already in the
+  // library. The message says what changed, so a different hours total is never a mystery.
   async function handleRefresh() {
     setRefreshing(true)
     setRefreshMessage(null)
     try {
       const result = await refreshFromSteam()
       setPlaying(result.currently_playing)
-      setRefreshMessage(
-        result.currently_playing.steam_failed
-          ? { error: true, text: "Steam isn't responding right now, so nothing was updated." }
-          : { text: 'Updated from Steam.' }
-      )
+      if (result.currently_playing.steam_failed) {
+        setRefreshMessage({ error: true, text: "Steam isn't responding right now, so nothing was updated." })
+      } else {
+        setRefreshMessage(refreshSummary(result.hours))
+        // New hours change the totals on this page, so read them again.
+        if (result.hours?.status === 'ok' && result.hours.updated > 0) {
+          getTimeToBeatStats()
+            .then(setStats)
+            .catch(() => {})
+        }
+      }
     } catch (err) {
       setRefreshMessage({ error: true, text: err.message })
     } finally {

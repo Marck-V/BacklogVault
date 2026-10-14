@@ -71,6 +71,9 @@ describe("GET /api/games/:id/details", () => {
       summary: "Roguelike",
       first_release_date: 1600000000,
       developer: "Supergiant Games",
+      age_ratings: [],
+      audio_languages: [],
+      store_links: [],
       time_to_beat_main_seconds: 72000,
       time_to_beat_completionist_seconds: 180000,
     });
