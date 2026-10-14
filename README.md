@@ -27,7 +27,7 @@ open it anywhere.
 ## How it fits together
 
 ```
-Browser --> nginx :8080 --+-- /          static React app
+Browser --> Caddy :8080 --+-- /          static React app (HTTPS on the server)
                           |-- /api/*  -> Node/Express API -> SQLite file (Docker volume)
                           |                    |
                           |                    |-> IGDB (via a Twitch OAuth token kept on the server)
@@ -44,7 +44,7 @@ Browser --> nginx :8080 --+-- /          static React app
 | Frontend | React 19, React Router, Vite |
 | API | Node.js, Express 4, better-sqlite3 (SQLite) |
 | Reporting CLI | TypeScript (`ts-report/`), prints backlog stats from the local database |
-| Packaging | Docker Compose (API, nginx), multi-stage builds |
+| Packaging | Docker Compose (API, Caddy), multi-stage builds |
 | Tests | Vitest and Supertest (API), Vitest and Testing Library (frontend) |
 | CI | GitHub Actions, 5 parallel jobs including a Docker smoke test |
 
@@ -81,7 +81,8 @@ cd frontend && npm install && npm run dev
 | `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | API | required | Twitch credentials for IGDB |
 | `PORT` | API | `4000` | Port the API listens on |
 | `DB_PATH` | API | `backend/backlog.db` | SQLite file location (`:memory:` in tests) |
-| `TRUST_PROXY` | API | `0` | Number of reverse proxies in front of the API. Per-IP limits depend on it. Compose sets it from `TRUST_PROXY_HOPS` (1 for nginx, 2 with Caddy in front) |
+| `TRUST_PROXY` | API | `0` | Number of reverse proxies in front of the API. Per-IP limits depend on it. Compose sets it from `TRUST_PROXY_HOPS` (1: Caddy is the only proxy) |
+| `SITE_ADDRESS` | Web (Caddy) | `:80` | `:80` serves plain HTTP for local runs. Set it to the public name on the server and Caddy gets and renews the HTTPS certificate itself |
 | `COOKIE_SECURE` | API | `false` | Set `true` when served over HTTPS |
 | `CORS_ORIGIN` | API | `http://localhost:5173` | Comma-separated origins allowed to call the API (local development only) |
 | `AUTH_RATE_LIMIT_MAX` | API | `10` per 15 min | Login and register attempts per IP |
@@ -95,7 +96,7 @@ cd frontend && npm install && npm run dev
 | `IGDB_ROUTE_RATE_LIMIT` | API | `60` per min | IGDB-backed requests per IP |
 | `IGDB_MIN_INTERVAL_MS` | API | `300` | Minimum gap between calls to IGDB, site-wide |
 | `WRITE_RATE_LIMIT`, `GUEST_RATE_LIMIT` | API | `120` per min, `10` per hour | Changes per IP, new guest sessions per IP |
-| `VITE_API_BASE` | Frontend build | localhost URL | Empty in Docker, so the app uses relative URLs behind nginx |
+| `VITE_API_BASE` | Frontend build | localhost URL | Empty in Docker, so the app uses relative URLs behind Caddy |
 
 ### Backups
 
@@ -134,8 +135,8 @@ users cannot see each other's data through both the API and the CSV export.
   still shows your own counts if IGDB is down.
 - **Errors:** failures in async handlers return a JSON error instead of crashing the process; the API shuts down
   cleanly on SIGTERM.
-- **Browser and container hardening:** a strict Content-Security-Policy and other headers from nginx, compression and
-  caching, log rotation and memory limits, and base images pinned by digest with Dependabot updates.
+- **Browser and container hardening:** a strict Content-Security-Policy and other headers from Caddy, compression and
+  caching, automatic HTTPS on the server, log rotation and memory limits, and base images pinned by digest with Dependabot updates.
 
 ## Known limitations
 
@@ -159,9 +160,9 @@ users cannot see each other's data through both the API and the CSV export.
 
 ```
 backend/           Express API, SQLite access, auth, limits, tests (test/)
-frontend/          React app, nginx config, tests (src/*.test.jsx)
+frontend/          React app, Caddyfile, tests (src/*.test.jsx)
 ts-report/         TypeScript CLI for local stats
-docker-compose.yml API + nginx
+docker-compose.yml API + Caddy
 .github/           CI workflow and Dependabot config
 PROJECT_METRICS.md Measurements, before/after log, design notes
 ```

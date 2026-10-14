@@ -76,13 +76,13 @@ jobs:
         run: docker compose build
       - name: Start the stack and wait until it is healthy
         run: docker compose up -d --wait --wait-timeout 120
-      - name: Smoke test through the nginx entrypoint
+      - name: Smoke test through the Caddy entrypoint
         run: |
           set -e
           U=http://localhost:8080
           J='Content-Type: application/json'
 
-          # "Running" is not the same as "accepting connections", so wait (up to 30 seconds) until nginx and the API
+          # "Running" is not the same as "accepting connections", so wait (up to 30 seconds) until Caddy and the API
           # both answer before testing anything.
           for i in $(seq 1 30); do
             if curl -fsS $U/api/health > /dev/null 2>&1; then break; fi

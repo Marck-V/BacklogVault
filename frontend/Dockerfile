@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# Empty values make the app call relative URLs (/api/...), which nginx proxies to the API.
+# Empty values make the app call relative URLs (/api/...), which Caddy proxies to the API.
 ARG VITE_API_BASE=""
 # Named on the privacy page: Steam's terms require saying which country Steam data is stored in, and how to reach us
 ARG VITE_DATA_COUNTRY=""
@@ -15,9 +15,8 @@ ENV VITE_API_BASE=$VITE_API_BASE \
     VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 RUN npm run build
 
-# Stage 2: serve the bundle with nginx; no Node in the final image
-FROM nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
-COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
+# Stage 2: serve the bundle with Caddy (v2.11.7); no Node in the final image. Caddy also handles HTTPS on the server.
+FROM caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv
+EXPOSE 80 443
