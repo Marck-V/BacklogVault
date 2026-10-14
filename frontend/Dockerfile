@@ -1,6 +1,6 @@
 # Stage 1: build the static bundle
 # Base images are pinned by digest so a rebuild cannot silently change them; Dependabot proposes updates.
-FROM node:24@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS build
+FROM node:26@sha256:32fa97f3363975684b08bf4e8a68a47c7905175cc20275b50b974bbd02aba731 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
