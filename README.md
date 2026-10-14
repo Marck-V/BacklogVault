@@ -112,6 +112,15 @@ Games can be hidden (the eye button on a card, or **Hide** in select mode). A hi
 notes, but is left out of every dashboard number. Hidden games wait in a collapsed **Hidden games** section at the bottom of the
 list, where **Show** brings them back.
 
+## Deploying
+
+Push to `main` and GitHub Actions does the rest: it runs every check, builds the API and web images, pushes them to
+GitHub's container registry tagged with the commit, then logs in to the server over SSH and runs `deploy/deploy.sh`.
+That script starts the new version and waits until both containers are healthy, and puts the previous version back if
+they are not. The server needs only Docker, `deploy/docker-compose.prod.yml` and a `.env` file; Caddy gets the HTTPS
+certificate itself. Nightly backups use `deploy/backup.sh`. The one-time server setup (a free Google Cloud e2-micro,
+a DuckDNS name, the GitHub secrets) is in [deploy/README.md](deploy/README.md).
+
 ## Tests
 
 ```bash
@@ -162,7 +171,8 @@ users cannot see each other's data through both the API and the CSV export.
 backend/           Express API, SQLite access, auth, limits, tests (test/)
 frontend/          React app, Caddyfile, tests (src/*.test.jsx)
 ts-report/         TypeScript CLI for local stats
-docker-compose.yml API + Caddy
+docker-compose.yml API + Caddy (local, built from source)
+deploy/            Production compose file, deploy and backup scripts, server setup guide
 .github/           CI workflow and Dependabot config
 PROJECT_METRICS.md Measurements, before/after log, design notes
 ```
