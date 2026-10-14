@@ -36,6 +36,14 @@ describe('the privacy page (Steam Web API terms)', () => {
     expect(document.title).toBe('Privacy and Steam data · BacklogVault')
   })
 
+  it('says accounts are under construction and that the library will be tied to the account once they are live', async () => {
+    renderAt('/privacy')
+    const heading = await screen.findByRole('heading', { name: 'Your library and this device' })
+    expect(heading.nextElementSibling.textContent).toMatch(
+      /no accounts yet: they are under construction, and once they are live your library will be saved and tied to your account/
+    )
+  })
+
   it('says Steam data is read only when the user asks, and never for anyone who has not connected', async () => {
     renderAt('/privacy')
     await screen.findByRole('heading', { level: 1 })

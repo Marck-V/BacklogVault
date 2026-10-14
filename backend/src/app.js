@@ -336,26 +336,6 @@ app.get("/api/stats/breakdown", igdbLimiter, async (req, res) => {
   }
 });
 
-// The signed-in user's whole library in one response. The export service builds its CSV from this
-// instead of reading the database, so session handling and ownership checks live only in this API.
-app.get("/api/library", (req, res) => {
-  if (!req.user) return res.status(401).json({ error: "Not signed in" });
-
-  const lists = db
-    .prepare("SELECT id, name, created_at FROM lists WHERE user_id = ? ORDER BY name")
-    .all(req.user.id);
-  const games = db
-    .prepare(
-      `SELECT lg.* FROM list_games lg JOIN lists l ON l.id = lg.list_id
-       WHERE l.user_id = ? ORDER BY lg.added_at DESC`
-    )
-    .all(req.user.id);
-
-  const byList = new Map(lists.map((list) => [list.id, { ...list, games: [] }]));
-  for (const game of games) byList.get(game.list_id)?.games.push(game);
-  res.json({ lists: [...byList.values()] });
-});
-
 app.use("/api/library", libraryRouter);
 app.use("/api", steamLinkRouter);
 app.use("/api/auth", authRouter);

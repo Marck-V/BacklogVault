@@ -282,7 +282,7 @@ describe('disconnecting', () => {
   it('offers a download of the library first', async () => {
     const { dialog } = await openDisconnect()
     const link = within(dialog).getByRole('link', { name: 'Download a copy first' })
-    expect(link.getAttribute('href')).toMatch(/\/export\/csv$/)
+    expect(link.getAttribute('href')).toMatch(/\/api\/library\/export\.csv$/)
     expect(link.hasAttribute('download')).toBe(true)
   })
 

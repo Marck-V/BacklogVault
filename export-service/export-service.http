@@ -1,6 +1,0 @@
-@export_service_HostAddress = http://localhost:5167
-
-GET {{export_service_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

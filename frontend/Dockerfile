@@ -5,14 +5,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# Empty values make the app call relative URLs (/api/..., /export/...), which nginx proxies to the other services.
+# Empty values make the app call relative URLs (/api/...), which nginx proxies to the API.
 ARG VITE_API_BASE=""
-ARG VITE_EXPORT_BASE=""
 # Named on the privacy page: Steam's terms require saying which country Steam data is stored in, and how to reach us
 ARG VITE_DATA_COUNTRY=""
 ARG VITE_CONTACT_EMAIL=""
 ENV VITE_API_BASE=$VITE_API_BASE \
-    VITE_EXPORT_BASE=$VITE_EXPORT_BASE \
     VITE_DATA_COUNTRY=$VITE_DATA_COUNTRY \
     VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 RUN npm run build

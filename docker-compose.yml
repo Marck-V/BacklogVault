@@ -32,20 +32,6 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
-  export:
-    build: ./export-service
-    environment:
-      # The export service asks the API for a user's library instead of opening the database file itself
-      API_BASE_URL: http://api:4000
-    depends_on:
-      api:
-        condition: service_healthy
-    logging: *default-logging
-    mem_limit: 256m
-    security_opt:
-      - no-new-privileges:true
-    restart: unless-stopped
-
   web:
     build:
       context: ./frontend
@@ -57,7 +43,6 @@ services:
       - "8080:80"
     depends_on:
       - api
-      - export
     # Without this, "running" is taken to mean "ready", but nginx is still starting up for a moment after the
     # container starts, and anything that connects in that gap (a deploy check, CI) gets a connection reset.
     healthcheck:

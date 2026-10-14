@@ -1,6 +1,7 @@
 import express from "express";
 import { ensureUser } from "./auth.js";
 import { buildBackup, restoreBackup, validateBackup } from "./libraryBackup.js";
+import { buildCsv, listsForExport } from "./csvExport.js";
 import { createGuestLimiter, createRestoreLimiter } from "./writeLimiters.js";
 
 const router = express.Router();
@@ -11,6 +12,14 @@ router.get("/backup", (req, res) => {
   const stamp = new Date().toISOString().slice(0, 10);
   res.set("Content-Disposition", `attachment; filename="backlogvault-backup-${stamp}.json"`);
   res.json(buildBackup(req.user.id));
+});
+
+// The library as a spreadsheet: one row per game (Game, Status, List, Date Added). For looking at, not for restoring: it
+// has no IGDB id, hours, rating or notes, which is what the backup file is for.
+router.get("/export.csv", (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Nothing to export yet. Add a game to a list first." });
+  res.set("Content-Disposition", 'attachment; filename="backlog.csv"');
+  res.type("text/csv; charset=utf-8").send(buildCsv(listsForExport(req.user.id)));
 });
 
 // Puts a backup file back. It only ever adds: nothing already in the library is changed or removed.
