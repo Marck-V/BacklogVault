@@ -66,6 +66,10 @@ if (!listGamesColumns.includes("notes")) {
 if (!listGamesColumns.includes("date_completed")) {
   db.exec("ALTER TABLE list_games ADD COLUMN date_completed TEXT");
 }
+if (!listGamesColumns.includes("hidden")) {
+  // 1 = the user hid this game: it stays saved, but is left out of every dashboard number until they unhide it.
+  db.exec("ALTER TABLE list_games ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
+}
 
 const usersColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 if (!usersColumns.includes("steam_id")) {

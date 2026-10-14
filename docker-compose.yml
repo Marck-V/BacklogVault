@@ -16,6 +16,8 @@ services:
       # The address visitors type to reach the site. Steam sends people back here after "Connect Steam", so it must be
       # the real public address once deployed (for example https://vault.example.com)
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      # Sign up and sign in are off by default: visitors get a library on this device with no account. "true" turns them on.
+      ENABLE_ACCOUNTS: ${ENABLE_ACCOUNTS:-false}
       # Number of proxies in front of the API, so rate limits see the real visitor IP. nginx alone is 1 (the default);
       # set TRUST_PROXY_HOPS=2 in .env when Caddy sits in front of nginx
       TRUST_PROXY: ${TRUST_PROXY_HOPS:-1}

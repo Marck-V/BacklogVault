@@ -22,7 +22,7 @@ describe("guest sessions", () => {
     const me = await client.get("/api/auth/me");
     const lists = await client.get("/api/lists");
     const playing = await client.get("/api/stats/currently-playing");
-    expect(me.body).toEqual({ user: null });
+    expect(me.body).toMatchObject({ user: null });
     expect(lists.body).toEqual([]);
     expect(playing.body).toEqual({ source: "manual", steam_linked: false, steam_failed: false, games: [] });
     expect(sessionCookie(me)).toBeUndefined();
@@ -139,7 +139,7 @@ describe("registering", () => {
     await client.post("/api/auth/register").send(credentials);
 
     const replay = await request(app).get("/api/auth/me").set("Cookie", oldCookie);
-    expect(replay.body).toEqual({ user: null });
+    expect(replay.body).toMatchObject({ user: null });
   });
 
   it("creates a normal account for a visitor with no session", async () => {
@@ -241,7 +241,7 @@ describe("logging in", () => {
     const oldCookie = sessionCookie(first).split(";")[0];
     await client.post("/api/auth/login").send(credentials);
     const replay = await request(app).get("/api/auth/me").set("Cookie", oldCookie);
-    expect(replay.body).toEqual({ user: null });
+    expect(replay.body).toMatchObject({ user: null });
   });
 });
 
@@ -254,9 +254,9 @@ describe("logging out", () => {
     expect(res.status).toBe(204);
     expect(sessionCookie(res)).toMatch(/bv_session=;/);
 
-    expect((await client.get("/api/auth/me")).body).toEqual({ user: null });
+    expect((await client.get("/api/auth/me")).body).toMatchObject({ user: null });
     const replay = await request(app).get("/api/auth/me").set("Cookie", cookie);
-    expect(replay.body).toEqual({ user: null });
+    expect(replay.body).toMatchObject({ user: null });
   });
 
   it("is safe to call without a session", async () => {
@@ -268,7 +268,7 @@ describe("session lifetime", () => {
   it("rejects an expired session", async () => {
     await client.post("/api/lists").send({ name: "x" });
     db.prepare("UPDATE sessions SET expires_at = ?").run(new Date(Date.now() - 1000).toISOString());
-    expect((await client.get("/api/auth/me")).body).toEqual({ user: null });
+    expect((await client.get("/api/auth/me")).body).toMatchObject({ user: null });
   });
 
   it("extends the session for an active user, at most once an hour", async () => {

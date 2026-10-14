@@ -11,6 +11,8 @@ export default defineConfig({
       WRITE_RATE_LIMIT: "100000",
       GUEST_RATE_LIMIT: "100000",
       IMPORT_RATE_LIMIT: "100000",
+      RESTORE_RATE_LIMIT: "100000",
+      ENABLE_ACCOUNTS: "true",
     },
     include: ["test/**/*.test.js"],
   },

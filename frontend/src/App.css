@@ -650,6 +650,11 @@ button:disabled {
   margin-top: 0.3rem;
 }
 
+.icon-btn-group {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .status-bubble-wrap {
   position: relative;
   display: inline-block;
@@ -1738,5 +1743,134 @@ a:has(> .lucide) {
 }
 
 .steam-import-data {
+  font-size: 0.8rem;
+}
+
+/* Your data */
+
+.app a.btn-link {
+  line-height: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.app a.btn-link:hover {
+  background: var(--accent-soft);
+}
+
+.your-data .panel p {
+  margin: 0 0 1rem;
+  line-height: 1.55;
+}
+
+.your-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.your-data-actions button {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.85rem;
+}
+
+.danger-ghost {
+  color: var(--danger);
+  border-color: rgba(255, 107, 138, 0.4);
+}
+
+.danger-ghost:hover:not(:disabled) {
+  background: rgba(255, 107, 138, 0.14);
+  color: var(--danger);
+}
+
+.restore-summary p {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+.guest-banner-actions .btn-link {
+  padding: 0.4rem 0.95rem;
+  font-size: 0.8rem;
+}
+
+/* Hidden games: collapsed by default at the bottom of a list, out of the way until someone wants them back. */
+.hidden-games {
+  margin-top: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.hidden-games > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.hidden-games[open] > summary {
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.hidden-games-note {
+  margin: 0.75rem 1rem 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.hidden-games-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 1rem 1rem;
+}
+
+.hidden-game {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.hidden-game:last-child {
+  border-bottom: none;
+}
+
+.hidden-game img,
+.hidden-game .game-row-cover-placeholder {
+  flex: none;
+  width: 34px;
+  height: 45px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.hidden-game-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hidden-game .btn-ghost {
+  flex: none;
+  padding: 0.35rem 0.9rem;
   font-size: 0.8rem;
 }

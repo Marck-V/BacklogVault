@@ -35,3 +35,9 @@ export function appUrl(env = process.env) {
   if (env.PUBLIC_URL) return originOf(env.PUBLIC_URL, "PUBLIC_URL");
   return originOf((env.CORS_ORIGIN || "http://localhost:5173").split(",")[0].trim(), "CORS_ORIGIN");
 }
+
+// Accounts (email and password) are switched off by default: visitors get a library on this device without signing up.
+// Set ENABLE_ACCOUNTS=true to offer sign up and sign in. Read on every request so tests and operators can flip it.
+export function accountsEnabled(env = process.env) {
+  return env.ENABLE_ACCOUNTS === "true";
+}

@@ -27,6 +27,19 @@ export function clearDashboardCaches() {
   genreCache.clear();
 }
 
+// Games the user hid in every list they are in. A game hidden in one list but still visible in another is not hidden.
+function hiddenEverywhere(userId) {
+  return new Set(
+    db
+      .prepare(
+        `SELECT lg.igdb_id FROM list_games lg JOIN lists l ON l.id = lg.list_id
+         WHERE l.user_id = ? GROUP BY lg.igdb_id HAVING MIN(lg.hidden) = 1`
+      )
+      .all(userId)
+      .map((r) => r.igdb_id)
+  );
+}
+
 // What the "currently playing" widget shows. A user who has imported from Steam gets the games they played in the
 // last two weeks (set up automatically); anyone else, or anyone whose Steam lookup fails or comes back empty, gets the
 // games they marked as Playing by hand.
@@ -41,7 +54,7 @@ export async function currentlyPlaying(userId, { force = false } = {}) {
       .prepare(
         `SELECT lg.igdb_id, lg.name, lg.cover_url, MIN(lg.added_at) AS added_at
          FROM list_games lg JOIN lists l ON l.id = lg.list_id
-         WHERE l.user_id = ? AND lg.status = 'Playing'
+         WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status = 'Playing'
          GROUP BY lg.igdb_id
          ORDER BY added_at DESC`
       )
@@ -53,7 +66,7 @@ export async function currentlyPlaying(userId, { force = false } = {}) {
 
   const cached = recentCache.get(userId);
   if (!force && cached && cached.steamId === steamId && Date.now() - cached.at < RECENT_CACHE_MS) {
-    return cached.games.length ? { source: "steam", steam_linked: true, steam_failed: false, games: cached.games } : manual();
+    return steamResult(userId, cached.games) ?? manual();
   }
 
   let games;
@@ -80,7 +93,15 @@ export async function currentlyPlaying(userId, { force = false } = {}) {
   }
 
   remember(recentCache, userId, { at: Date.now(), steamId, games });
-  return games.length ? { source: "steam", steam_linked: true, steam_failed: false, games } : manual();
+  return steamResult(userId, games) ?? manual();
+}
+
+// The Steam list without the games the user hid (applied on every read, so hiding takes effect at once even though the
+// Steam answer is cached). Null when nothing is left, so the widget falls back to the games marked Playing by hand.
+function steamResult(userId, games) {
+  const hidden = hiddenEverywhere(userId);
+  const shown = games.filter((g) => !hidden.has(g.igdb_id));
+  return shown.length ? { source: "steam", steam_linked: true, steam_failed: false, games: shown } : null;
 }
 
 const CATEGORIES = ["genres", "themes", "modes"];
@@ -101,7 +122,7 @@ const namesOf = (list) => (list ?? []).map((entry) => entry.name).filter(Boolean
 // answer, so the dashboard can say so instead of showing a wrong chart.
 export async function libraryBreakdown(userId) {
   const ids = db
-    .prepare("SELECT DISTINCT lg.igdb_id FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ?")
+    .prepare("SELECT DISTINCT lg.igdb_id FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ? AND lg.hidden = 0")
     .all(userId)
     .map((r) => r.igdb_id);
 

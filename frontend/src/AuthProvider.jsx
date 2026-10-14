@@ -7,12 +7,17 @@ import AuthDialog from './AuthDialog'
 export default function AuthProvider({ children }) {
   const navigate = useNavigate()
   const [user, setUser] = useState(undefined)
+  const [accountsEnabled, setAccountsEnabled] = useState(false)
+  // Kept here, above the pages, because restoring into an empty browser creates this device's library, which changes who
+  // is signed in and rebuilds the page: a message held by the page itself would vanish the moment it appeared.
+  const [restoreResult, setRestoreResult] = useState(null)
   const [dialogMode, setDialogMode] = useState(null)
 
   const refreshUser = useCallback(async () => {
     try {
-      const { user: current } = await getMe()
+      const { user: current, accountsEnabled: enabled } = await getMe()
       setUser(current)
+      setAccountsEnabled(Boolean(enabled))
     } catch {
       setUser(null)
     }
@@ -41,7 +46,7 @@ export default function AuthProvider({ children }) {
     navigate('/')
   }
 
-  const value = { user, loading: user === undefined, refreshUser, register, login, logout, openAuth: setDialogMode }
+  const value = { user, accountsEnabled, restoreResult, setRestoreResult, loading: user === undefined, refreshUser, register, login, logout, openAuth: setDialogMode }
 
   return (
     <AuthContext.Provider value={value}>

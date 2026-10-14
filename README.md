@@ -88,14 +88,33 @@ cd export-service && dotnet run
 | `COOKIE_SECURE` | API | `false` | Set `true` when served over HTTPS |
 | `CORS_ORIGIN` | API | `http://localhost:5173` | Comma-separated origins allowed to call the API (local development only) |
 | `AUTH_RATE_LIMIT_MAX` | API | `10` per 15 min | Login and register attempts per IP |
-| `STEAM_API_KEY` | API | empty (feature off) | [Steam Web API key](https://steamcommunity.com/dev/apikey); turns on the Steam import. Keep it on the server only |
-| `IMPORT_RATE_LIMIT` | API | `5` per hour | Steam imports per IP |
+| `ENABLE_ACCOUNTS` | API | `false` | Sign up and sign in are off by default: visitors get a library on their device with no account. `true` turns accounts on (the website follows the server) |
+| `STEAM_API_KEY` | API | empty (feature off) | [Steam Web API key](https://steamcommunity.com/dev/apikey); turns on "Connect Steam". Keep it on the server only |
+| `PUBLIC_URL`, `APP_URL` | API | `http://localhost:4000`, the dev site | Where Steam sends people back after sign-in, and where they land on the website. Set both to the real address when deployed |
+| `STEAM_DAILY_CALL_LIMIT` | API | `90000` | Site-wide cap on Steam Web API calls per day (Steam's terms allow 100,000) |
+| `DATA_COUNTRY`, `CONTACT_EMAIL` | Frontend build (Docker) | empty | Shown on the privacy page: the country where data is stored and a contact address |
+| `IMPORT_RATE_LIMIT`, `RESTORE_RATE_LIMIT` | API | `5`, `10` per hour | Steam imports and backup restores per IP |
+| `BACKUP_DIR`, `BACKUP_KEEP` | Backup script | next to the database, `14` | Where `npm run backup` writes, and how many copies it keeps |
 | `IGDB_ROUTE_RATE_LIMIT` | API | `60` per min | IGDB-backed requests per IP |
 | `IGDB_MIN_INTERVAL_MS` | API | `300` | Minimum gap between calls to IGDB, site-wide |
 | `WRITE_RATE_LIMIT`, `GUEST_RATE_LIMIT` | API | `120` per min, `10` per hour | Changes per IP, new guest sessions per IP |
 | `API_BASE_URL` | Export service | `http://localhost:4000` | Where to fetch a user's library |
 | `EXPORT_URL` | Export service | `http://localhost:5000` | Address the service listens on |
 | `VITE_API_BASE`, `VITE_EXPORT_BASE` | Frontend build | localhost URLs | Empty in Docker, so the app uses relative URLs behind nginx |
+
+### Backups
+
+Everything lives in one SQLite file, so back it up. `npm run backup` (in Docker: `docker compose exec api npm run backup`)
+writes a dated, consistent copy into a `backups` folder beside the database, even while the site is running, and keeps the
+newest 14. Run it from a nightly cron job, and copy the folder somewhere else (another machine or cloud storage): a copy on
+the same disk does not survive losing the disk.
+
+Visitors can also back up their own library from the home page (**Download Backup** gives a `.json` file,
+**Restore From Backup** puts it back and only ever adds), and **Delete My Data** removes everything about them at once.
+
+Games can be hidden (the eye button on a card, or **Hide** in select mode). A hidden game is kept, with its status, hours and
+notes, but is left out of every dashboard number. Hidden games wait in a collapsed **Hidden games** section at the bottom of the
+list, where **Show** brings them back.
 
 ## Tests
 
@@ -127,14 +146,16 @@ users cannot see each other's data through both the API and the CSV export.
 ## Known limitations
 
 - **Not deployed yet.** There is no public URL.
-- **No password reset, email verification or account deletion yet**, so a forgotten password means a lost account.
+- **Launches without accounts.** Visitors get a library tied to a cookie on their device, deleted after 90 days without a
+  visit. Accounts exist in the code (`ENABLE_ACCOUNTS=true`) but have no password reset or email verification, so they are
+  off. Visitors move between devices with Download Backup and Restore From Backup.
 - **IGDB terms:** IGDB is free for non-commercial use. I could not read its official terms, so what it allows for
   caching and commercial use is unconfirmed. Check [api-docs.igdb.com](https://api-docs.igdb.com/) before launching
   anything beyond a personal project.
-- **Steam import is not tied to a Steam sign-in.** Anyone can type in any public profile, but Steam's API terms say
-  data should be retrieved as requested by the user it belongs to, and require a privacy policy that says what is
-  stored. Verifying ownership with Steam's OpenID sign-in, and writing that policy, are needed before a public launch.
-  Only games, names and hours are stored; the profile itself is not.
+- **Steam:** "Connect Steam" proves the visitor owns the account through Steam's own sign-in, and Steam data is read only
+  for that account and only when they ask. The privacy page covers what is stored; `DATA_COUNTRY` and `CONTACT_EMAIL`
+  must be set before launch, and the page's disclaimers have not been reviewed by a lawyer. Disconnecting deletes the
+  library. See `PROJECT_METRICS.md` section 6 for the clause-by-clause check against Steam's API terms.
 - **SQLite means one API instance.** Scaling out would mean moving to Postgres.
 - **Local data from before accounts existed** has no owner. `cd backend && npm run claim-legacy -- you@example.com`
   assigns it to an account.

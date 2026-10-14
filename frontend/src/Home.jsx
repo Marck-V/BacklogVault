@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getLists, createList, deleteList, EXPORT_BASE } from './api'
+import { getLists, createList, deleteList, EXPORT_BASE, BACKUP_URL } from './api'
 import Dashboard from './Dashboard'
 import ConfirmDialog from './ConfirmDialog'
-import SteamNotice from './SteamNotice'
+import YourData from './YourData'
 import { useAuth } from './auth'
 import { usePageTitle } from './usePageTitle'
 import { Download, Plus, Trash2 } from 'lucide-react'
 
 const BANNER_DISMISSED_KEY = 'bv_guest_banner_dismissed'
+const DEVICE_NOTICE_KEY = 'bv_device_notice_dismissed'
 
-function readBannerDismissed() {
+function readDismissed(key) {
   try {
-    return localStorage.getItem(BANNER_DISMISSED_KEY) === '1'
+    return localStorage.getItem(key) === '1'
   } catch {
     return false
   }
@@ -20,8 +21,9 @@ function readBannerDismissed() {
 
 export default function Home() {
   usePageTitle()
-  const { user, refreshUser, openAuth } = useAuth()
-  const [bannerDismissed, setBannerDismissed] = useState(readBannerDismissed)
+  const { user, accountsEnabled, refreshUser, openAuth } = useAuth()
+  const [deviceNoticeDismissed, setDeviceNoticeDismissed] = useState(() => readDismissed(DEVICE_NOTICE_KEY))
+  const [bannerDismissed, setBannerDismissed] = useState(() => readDismissed(BANNER_DISMISSED_KEY))
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -68,21 +70,40 @@ export default function Home() {
     refresh()
   }
 
-  function dismissBanner() {
-    setBannerDismissed(true)
+  function remember(key, done) {
+    done(true)
     try {
-      localStorage.setItem(BANNER_DISMISSED_KEY, '1')
+      localStorage.setItem(key, '1')
     } catch {
-      // Storage can be blocked; the banner then simply returns on the next visit.
+      // Storage can be blocked; the message then simply returns on the next visit.
     }
   }
+
+  const dismissBanner = () => remember(BANNER_DISMISSED_KEY, setBannerDismissed)
+  const dismissDeviceNotice = () => remember(DEVICE_NOTICE_KEY, setDeviceNoticeDismissed)
 
   return (
     <div>
       <h1 className="visually-hidden">BacklogVault</h1>
-      <SteamNotice />
 
-      {user?.isGuest && lists.length > 0 && !bannerDismissed && (
+      {!accountsEnabled && lists.length > 0 && !deviceNoticeDismissed && (
+        <div className="guest-banner" role="note">
+          <span>
+            Your library is saved on this device. If you clear your browser data or switch devices, you will start over, so
+            download a backup to keep a copy. A library not opened for 90 days is deleted.
+          </span>
+          <span className="guest-banner-actions">
+            <a className="btn-link" href={BACKUP_URL} download>
+              Download Backup
+            </a>
+            <button type="button" className="btn-ghost" onClick={dismissDeviceNotice}>
+              Dismiss
+            </button>
+          </span>
+        </div>
+      )}
+
+      {accountsEnabled && user?.isGuest && lists.length > 0 && !bannerDismissed && (
         <div className="guest-banner" role="note">
           <span>
             You&apos;re using BacklogVault as a guest. Create a free account to keep your library and open it on any
@@ -149,6 +170,8 @@ export default function Home() {
           ))}
         </ul>
       </section>
+
+      <YourData onChanged={refresh} />
 
       {pendingDelete && (
         <ConfirmDialog

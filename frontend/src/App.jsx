@@ -4,6 +4,7 @@ import Home from './Home'
 import ListView from './ListView'
 import NotFound from './NotFound'
 import PrivacyPage from './PrivacyPage'
+import SteamNotice from './SteamNotice'
 import ErrorBoundary from './ErrorBoundary'
 import SiteHeader from './SiteHeader'
 import AuthProvider from './AuthProvider'
@@ -34,6 +35,7 @@ function App() {
         </a>
         <SiteHeader />
         <main id="main" tabIndex={-1}>
+          <SteamNotice />
           <AppRoutes />
         </main>
         <footer className="site-footer">

@@ -42,3 +42,12 @@ export function createSteamLinkLimiter(limit = Number(process.env.STEAM_LINK_RAT
     message: "Too many Steam sign-in attempts. Please try again later.",
   });
 }
+
+// Per-IP cap on restoring backup files. Each one can write thousands of rows, so it is stricter than ordinary writes.
+export function createRestoreLimiter(limit = Number(process.env.RESTORE_RATE_LIMIT ?? 10)) {
+  return limiter({
+    windowMs: 60 * 60 * 1000,
+    limit,
+    message: "You have restored several backups recently. Please try again later.",
+  });
+}
