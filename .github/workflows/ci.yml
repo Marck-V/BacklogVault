@@ -62,22 +62,6 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
-  export-service:
-    name: C# export service build
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: export-service
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.x
-      - run: dotnet build --configuration Release
-      - name: Run C# tests
-        run: dotnet test export-service.tests
-        working-directory: .
-
   docker-stack:
     name: Docker stack smoke test
     runs-on: ubuntu-24.04
@@ -98,38 +82,37 @@ jobs:
           U=http://localhost:8080
           J='Content-Type: application/json'
 
-          # "Running" is not the same as "accepting connections", and the C# service has no health check of its own,
-          # so wait (up to 30 seconds) until nginx and the export service both answer before testing anything.
+          # "Running" is not the same as "accepting connections", so wait (up to 30 seconds) until nginx and the API
+          # both answer before testing anything.
           for i in $(seq 1 30); do
-            if curl -fsS $U/api/health > /dev/null 2>&1 && curl -fsS $U/export/health > /dev/null 2>&1; then break; fi
+            if curl -fsS $U/api/health > /dev/null 2>&1; then break; fi
             sleep 1
           done
 
           curl -fsS $U/ | grep -q '<div id="root">'
           curl -fsS $U/lists/1 | grep -q '<div id="root">'
           curl -fsS $U/api/health
-          curl -fsS $U/export/health
 
           # A visitor with no session sees nothing and cannot export
           test "$(curl -fsS $U/api/lists)" = '[]'
-          test "$(curl -s -o /dev/null -w '%{http_code}' $U/export/csv)" = '401'
+          test "$(curl -s -o /dev/null -w '%{http_code}' $U/api/library/export.csv)" = '401'
 
-          # User A: first write creates a guest session; written by Node, read by the C# container
+          # User A: first write creates a guest session; then read back through the CSV export
           LIST_ID=$(curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST $U/api/lists -H "$J" -d '{"name":"CI"}' | jq .id)
           curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST "$U/api/lists/$LIST_ID/games" -H "$J" -d '{"igdb_id":1,"name":"CI Game"}'
-          curl -fsS -b /tmp/a.jar $U/export/csv | grep -q 'CI Game,Backlog,CI,'
+          curl -fsS -b /tmp/a.jar $U/api/library/export.csv | grep -q 'CI Game,Backlog,CI,'
 
-          # User B is isolated from user A in both the Node API and the C# export
+          # User B is isolated from user A in both the API and the CSV export
           curl -fsS -c /tmp/b.jar -b /tmp/b.jar -X POST $U/api/lists -H "$J" -d '{"name":"Other"}'
           test "$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/b.jar $U/api/lists/$LIST_ID)" = '404'
-          if curl -fsS -b /tmp/b.jar $U/export/csv | grep -q 'CI Game'; then
+          if curl -fsS -b /tmp/b.jar $U/api/library/export.csv | grep -q 'CI Game'; then
             echo "LEAK: user B can see user A's data in the CSV export"
             exit 1
           fi
 
           # Guest upgrades to an account in place and keeps the library
           curl -fsS -c /tmp/a.jar -b /tmp/a.jar -X POST $U/api/auth/register -H "$J" -d '{"email":"ci@example.com","password":"ci-password-123"}'
-          curl -fsS -b /tmp/a.jar $U/export/csv | grep -q 'CI Game,Backlog,CI,'
+          curl -fsS -b /tmp/a.jar $U/api/library/export.csv | grep -q 'CI Game,Backlog,CI,'
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs

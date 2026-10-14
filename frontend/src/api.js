@@ -1,5 +1,4 @@
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:4000'
-export const EXPORT_BASE = import.meta.env.VITE_EXPORT_BASE ?? 'http://localhost:5000'
 
 async function request(path, options) {
   const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...options })
@@ -115,6 +114,8 @@ export function getCurrentlyPlaying() {
 
 // The whole library as a backup file (the browser downloads it, using the cookie it already has).
 export const BACKUP_URL = `${API_BASE}/api/library/backup`
+// The library as a spreadsheet (a CSV file the browser downloads, using the cookie it already has).
+export const EXPORT_CSV_URL = `${API_BASE}/api/library/export.csv`
 
 export function restoreBackup(backup) {
   return request('/api/library/restore', {

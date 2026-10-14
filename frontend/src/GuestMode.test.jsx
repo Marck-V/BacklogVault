@@ -107,6 +107,7 @@ describe('telling people where their library lives', () => {
     expect(note.textContent).toMatch(/saved on this device/)
     expect(note.textContent).toMatch(/clear your browser data or switch devices/)
     expect(note.textContent).toMatch(/not opened for 90 days is deleted/)
+    expect(note.textContent).toMatch(/Accounts are under construction: once they are live, your library will be saved and tied to your account/)
     expect(within(note).getByRole('link', { name: 'Download Backup' }).getAttribute('href')).toMatch(/\/api\/library\/backup$/)
   })
 
@@ -133,6 +134,7 @@ describe('telling people where their library lives', () => {
     const section = screen.getByRole('heading', { name: 'Your data' }).closest('section')
     expect(section.textContent).toMatch(/saved on this device, in this browser/)
     expect(section.textContent).toMatch(/not been opened for 90 days is deleted/)
+    expect(section.textContent).toMatch(/Accounts are under construction/)
   })
 })
 
@@ -159,6 +161,7 @@ describe('the Your data section', () => {
     const section = screen.getByRole('heading', { name: 'Your data' }).closest('section')
     expect(await within(section).findByText(/saved to your account/)).toBeTruthy()
     expect(section.textContent).not.toMatch(/90 days/)
+    expect(section.textContent).not.toMatch(/under construction/)
   })
 })
 

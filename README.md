@@ -19,8 +19,8 @@ open it anywhere.
   playing now.
 - **Guest-first accounts:** guests are created on the first save and upgraded in place when they register, so the
   library carries over. Logging in on another device can merge a guest's lists in.
-- **CSV export** of your whole library, produced by a separate C# service.
-- **Steam import** (optional, needs a Steam Web API key): paste your Steam profile and your owned games are added to a
+- **CSV export** of your whole library (Game, Status, List, Date Added), safe to open in a spreadsheet.
+- **Steam import** (optional, needs a Steam Web API key): connect your Steam account (you sign in on Steam's own site) and your owned games are added to a
   list as Backlog with your hours played. Games are matched to IGDB by Steam app ID, and anything IGDB does not list
   (soundtracks, tools, demos) is reported instead of failing. Re-running it is safe.
 
@@ -30,22 +30,22 @@ open it anywhere.
 Browser --> nginx :8080 --+-- /          static React app
                           |-- /api/*  -> Node/Express API -> SQLite file (Docker volume)
                           |                    |
-                          |                    '-> IGDB (via a Twitch OAuth token kept on the server)
-                          '-- /export/* -> C# service -> asks the API for your library -> CSV
+                          |                    |-> IGDB (via a Twitch OAuth token kept on the server)
+                          |                    '-> Steam Web API (key kept on the server)
+                          '-- CSV export and backups are API routes too
 ```
 
-- The **API is the only thing that touches the database and the only thing that understands sessions**. The C# export
-  service depends on the API's JSON, not on its storage, so it can run anywhere.
+- The **API is the only thing that touches the database and the only thing that understands sessions**, including the CSV
+  export and the backup download.
 - The browser never sees the IGDB credentials: the API proxies every IGDB request.
 
 | Part | Technology |
 |---|---|
 | Frontend | React 19, React Router, Vite |
 | API | Node.js, Express 4, better-sqlite3 (SQLite) |
-| Export service | C# / ASP.NET Core minimal API |
 | Reporting CLI | TypeScript (`ts-report/`), prints backlog stats from the local database |
-| Packaging | Docker Compose (API, export service, nginx), multi-stage builds |
-| Tests | Vitest and Supertest (API), Vitest and Testing Library (frontend), xUnit (C#) |
+| Packaging | Docker Compose (API, nginx), multi-stage builds |
+| Tests | Vitest and Supertest (API), Vitest and Testing Library (frontend) |
 | CI | GitHub Actions, 5 parallel jobs including a Docker smoke test |
 
 ## Run it
@@ -60,10 +60,10 @@ cp .env.example .env        # then put your IGDB client ID and secret in .env
 docker compose up --build
 ```
 
-Open http://localhost:8080. Only that port is published; the API and export service are reachable only inside the
-Docker network.
+Open http://localhost:8080. Only that port is published; the API is reachable only inside the Docker
+network.
 
-### Without Docker (three terminals)
+### Without Docker (two terminals)
 
 ```bash
 # API on http://localhost:4000
@@ -72,9 +72,6 @@ npm install && npm run dev
 
 # Frontend on http://localhost:5173
 cd frontend && npm install && npm run dev
-
-# Export service on http://localhost:5000 (needs the API running)
-cd export-service && dotnet run
 ```
 
 ### Configuration
@@ -98,9 +95,7 @@ cd export-service && dotnet run
 | `IGDB_ROUTE_RATE_LIMIT` | API | `60` per min | IGDB-backed requests per IP |
 | `IGDB_MIN_INTERVAL_MS` | API | `300` | Minimum gap between calls to IGDB, site-wide |
 | `WRITE_RATE_LIMIT`, `GUEST_RATE_LIMIT` | API | `120` per min, `10` per hour | Changes per IP, new guest sessions per IP |
-| `API_BASE_URL` | Export service | `http://localhost:4000` | Where to fetch a user's library |
-| `EXPORT_URL` | Export service | `http://localhost:5000` | Address the service listens on |
-| `VITE_API_BASE`, `VITE_EXPORT_BASE` | Frontend build | localhost URLs | Empty in Docker, so the app uses relative URLs behind nginx |
+| `VITE_API_BASE` | Frontend build | localhost URL | Empty in Docker, so the app uses relative URLs behind nginx |
 
 ### Backups
 
@@ -121,7 +116,6 @@ list, where **Show** brings them back.
 ```bash
 cd backend && npm test                 # API tests; `npm run test:coverage` adds a coverage table
 cd frontend && npm test                # pages, routing, error boundary
-dotnet test export-service.tests       # CSV formatting
 cd ts-report && npm install && npm run report   # prints stats from backend/backlog.db (read-only)
 ```
 
@@ -146,7 +140,8 @@ users cannot see each other's data through both the API and the CSV export.
 ## Known limitations
 
 - **Not deployed yet.** There is no public URL.
-- **Launches without accounts.** Visitors get a library tied to a cookie on their device, deleted after 90 days without a
+- **Launches without accounts.** The website says accounts are under construction and that, once live, the library will be
+  saved and tied to the account (home page notice, Your data panel, privacy page). Visitors get a library tied to a cookie on their device, deleted after 90 days without a
   visit. Accounts exist in the code (`ENABLE_ACCOUNTS=true`) but have no password reset or email verification, so they are
   off. Visitors move between devices with Download Backup and Restore From Backup.
 - **IGDB terms:** IGDB is free for non-commercial use. I could not read its official terms, so what it allows for
@@ -165,10 +160,8 @@ users cannot see each other's data through both the API and the CSV export.
 ```
 backend/           Express API, SQLite access, auth, limits, tests (test/)
 frontend/          React app, nginx config, tests (src/*.test.jsx)
-export-service/    C# CSV export service
-export-service.tests/   xUnit tests for the CSV code
 ts-report/         TypeScript CLI for local stats
-docker-compose.yml API + export service + nginx
+docker-compose.yml API + nginx
 .github/           CI workflow and Dependabot config
 PROJECT_METRICS.md Measurements, before/after log, design notes
 ```

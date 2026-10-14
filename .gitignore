@@ -15,12 +15,6 @@ coverage/
 *.db-wal
 *.db-journal
 
-# .NET
-export-service/bin/
-export-service/obj/
-export-service.tests/bin/
-export-service.tests/obj/
-
 # Logs, OS and editor files
 *.log
 .DS_Store

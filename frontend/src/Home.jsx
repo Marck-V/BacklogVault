@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getLists, createList, deleteList, EXPORT_BASE, BACKUP_URL } from './api'
+import { getLists, createList, deleteList, EXPORT_CSV_URL, BACKUP_URL } from './api'
 import Dashboard from './Dashboard'
 import ConfirmDialog from './ConfirmDialog'
 import YourData from './YourData'
@@ -90,7 +90,8 @@ export default function Home() {
         <div className="guest-banner" role="note">
           <span>
             Your library is saved on this device. If you clear your browser data or switch devices, you will start over, so
-            download a backup to keep a copy. A library not opened for 90 days is deleted.
+            download a backup to keep a copy. A library not opened for 90 days is deleted. Accounts are under construction:
+            once they are live, your library will be saved and tied to your account.
           </span>
           <span className="guest-banner-actions">
             <a className="btn-link" href={BACKUP_URL} download>
@@ -129,7 +130,7 @@ export default function Home() {
         <div className="section-title-row">
           <h2 className="section-title">Your Lists</h2>
           {lists.length > 0 && (
-            <a href={`${EXPORT_BASE}/export/csv`} className="export-btn" download="backlog.csv">
+            <a href={EXPORT_CSV_URL} className="export-btn" download="backlog.csv">
               <Download size={14} aria-hidden="true" />
               Export CSV
             </a>

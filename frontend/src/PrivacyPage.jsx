@@ -55,7 +55,7 @@ export default function PrivacyPage() {
       <p>
         {accountsEnabled
           ? 'You can use BacklogVault without an account: your library is then tied to a cookie on this device and browser.'
-          : 'BacklogVault has no accounts. Your library is tied to a cookie on this device and browser, so it is only available where that cookie is.'}{' '}
+          : 'BacklogVault has no accounts yet: they are under construction, and once they are live your library will be saved and tied to your account. Until then, your library is tied to a cookie on this device and browser, so it is only available where that cookie is.'}{' '}
         Clearing your browser data, using a private window, or switching browser or device starts you with an empty
         library. A library that has not been opened for 90 days is deleted automatically. To keep a copy or move to
         another device, use <strong>Download Backup</strong> and <strong>Restore From Backup</strong> under Your data on

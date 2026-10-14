@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { EXPORT_BASE, STEAM_CONNECT_URL, getSteamImportStatus, importSteamLibrary, disconnectSteamAndDeleteLibrary } from './api'
+import { EXPORT_CSV_URL, STEAM_CONNECT_URL, getSteamImportStatus, importSteamLibrary, disconnectSteamAndDeleteLibrary } from './api'
 import { Download, Unlink } from 'lucide-react'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -154,7 +154,7 @@ export default function SteamImport({ listId, onImported }) {
               Disconnect Steam and delete your library? This removes your Steam ID and display name and{' '}
               <strong>permanently deletes all of your lists and the games in them</strong>, including games you added
               yourself. It cannot be undone.{' '}
-              <a href={`${EXPORT_BASE}/export/csv`} download="backlog.csv">
+              <a href={EXPORT_CSV_URL} download="backlog.csv">
                 Download a copy first
               </a>
               .

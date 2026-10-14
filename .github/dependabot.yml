@@ -14,20 +14,12 @@ updates:
     directory: /ts-report
     schedule:
       interval: weekly
-  - package-ecosystem: nuget
-    directory: /export-service.tests
-    schedule:
-      interval: weekly
   - package-ecosystem: docker
     directory: /backend
     schedule:
       interval: weekly
   - package-ecosystem: docker
     directory: /frontend
-    schedule:
-      interval: weekly
-  - package-ecosystem: docker
-    directory: /export-service
     schedule:
       interval: weekly
   - package-ecosystem: github-actions

@@ -108,6 +108,8 @@ export default function YourData({ onChanged }) {
             ? 'Your library is saved to your account.'
             : 'Your library is saved on this device, in this browser. Clearing your browser data, using a private window, or opening the site on another device or browser starts you with an empty library.'}{' '}
           {!savedWithAccount && 'A library that has not been opened for 90 days is deleted automatically. '}
+          {!accountsEnabled &&
+            'Accounts are under construction: once they are live, your library will be saved and tied to your account. '}
           Download a backup to keep a copy or to move your library to another device.
         </p>
 
