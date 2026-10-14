@@ -9,7 +9,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push cancels an older run, except on main, where the older run may be half-way through a deploy.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
@@ -119,3 +120,83 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  # Only for pushes to main, and only after every check above has passed.
+  publish:
+    name: Build and publish images
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend, ts-report, docker-stack]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Log in to GitHub's container registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push the API and web images
+        env:
+          # Shown on the privacy page. Set them under Settings > Secrets and variables > Actions > Variables.
+          DATA_COUNTRY: ${{ vars.DATA_COUNTRY }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+        run: |
+          set -euo pipefail
+          REPO="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          SOURCE="org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
+          docker build --label "$SOURCE" -t "$REPO/backlogvault-api:$GITHUB_SHA" -t "$REPO/backlogvault-api:latest" ./backend
+          docker build --label "$SOURCE" \
+            --build-arg VITE_DATA_COUNTRY="$DATA_COUNTRY" --build-arg VITE_CONTACT_EMAIL="$CONTACT_EMAIL" \
+            -t "$REPO/backlogvault-web:$GITHUB_SHA" -t "$REPO/backlogvault-web:latest" ./frontend
+          for name in api web; do
+            docker push --quiet "$REPO/backlogvault-$name:$GITHUB_SHA"
+            docker push --quiet "$REPO/backlogvault-$name:latest"
+          done
+
+  # Switched off until the server exists: set the repository variable DEPLOY_HOST (and the rest, see deploy/README.md).
+  deploy:
+    name: Deploy to the server
+    if: vars.DEPLOY_HOST != ''
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: production
+      url: https://${{ vars.SITE_ADDRESS }}
+    # Never two deploys at once, and never cancel one half-way.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+      SITE: ${{ vars.SITE_ADDRESS }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          # The server's own host key, recorded once by hand, so a machine pretending to be the server is refused.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host *\n  IdentityFile ~/.ssh/id_deploy\n  BatchMode yes\n' > ~/.ssh/config
+      - name: Copy the deploy files
+        run: |
+          ssh "$TARGET" 'mkdir -p backlogvault'
+          scp deploy/docker-compose.prod.yml deploy/deploy.sh deploy/backup.sh "$TARGET:backlogvault/"
+      - name: Log the server in to the registry for this deploy
+        # The token expires when this job ends, so nothing long-lived is left on the server. It goes over stdin, never
+        # on a command line where other users of the server could see it.
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | ssh "$TARGET" "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+      - name: Deploy this commit
+        run: ssh "$TARGET" "cd backlogvault && chmod +x deploy.sh backup.sh && ./deploy.sh 'ghcr.io/${GITHUB_REPOSITORY_OWNER,,}' '$GITHUB_SHA'"
+      - name: Log the server out of the registry
+        if: always()
+        run: ssh "$TARGET" 'docker logout ghcr.io' || true
+      - name: Check the live site from outside
+        run: |
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "https://$SITE/api/health"
+          curl -fsS "https://$SITE/" | grep -q '<div id="root">'
