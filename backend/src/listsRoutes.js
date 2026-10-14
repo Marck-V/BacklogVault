@@ -145,13 +145,27 @@ router.put("/:id/games/:gameId", (req, res) => {
   res.json(game);
 });
 
+// Hides or shows one game. A hidden game stays in the list and is kept, but every dashboard number leaves it out.
+router.put("/:id/games/:gameId/hidden", (req, res) => {
+  if (typeof req.body?.hidden !== "boolean") return res.status(400).json({ error: "hidden must be true or false" });
+  const list = ownedList(req);
+  if (!list) return res.status(404).json({ error: "Game not found in list" });
+  const result = db
+    .prepare("UPDATE list_games SET hidden = ? WHERE id = ? AND list_id = ?")
+    .run(req.body.hidden ? 1 : 0, req.params.gameId, list.id);
+  if (result.changes === 0) return res.status(404).json({ error: "Game not found in list" });
+  res.json(db.prepare("SELECT * FROM list_games WHERE id = ?").get(req.params.gameId));
+});
+
 // Changes the status of several games in one list at once (the list page's multi-select). Only status changes here,
-// so rating, hours and notes are left exactly as they are. A game that is already Completed keeps its original
+// so rating, hours and notes are left exactly as they are. Send { ids, hidden } instead of a status to hide or show them
+// all. A game that is already Completed keeps its original
 // completion date. Ids that are not in this list are skipped, and the answer says how many were changed.
 router.patch("/:id/games", (req, res) => {
-  const { ids, status } = req.body ?? {};
+  const { ids, status, hidden } = req.body ?? {};
+  const hiding = typeof hidden === "boolean";
 
-  if (!VALID_STATUSES.includes(status)) {
+  if (!hiding && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(", ")}` });
   }
   if (
@@ -168,6 +182,7 @@ router.patch("/:id/games", (req, res) => {
 
   const find = db.prepare("SELECT * FROM list_games WHERE id = ? AND list_id = ?");
   const update = db.prepare("UPDATE list_games SET status = ?, date_completed = ? WHERE id = ? AND list_id = ?");
+  const setHidden = db.prepare("UPDATE list_games SET hidden = ? WHERE id = ? AND list_id = ?");
   const now = new Date().toISOString();
   const games = [];
 
@@ -175,6 +190,11 @@ router.patch("/:id/games", (req, res) => {
     for (const id of new Set(ids)) {
       const existing = find.get(id, list.id);
       if (!existing) continue;
+      if (hiding) {
+        setHidden.run(hidden ? 1 : 0, id, list.id);
+        games.push(find.get(id, list.id));
+        continue;
+      }
       const newlyCompleted = status === "Completed" && (existing.status !== "Completed" || !existing.date_completed);
       update.run(status, newlyCompleted ? now : existing.date_completed, id, list.id);
       games.push(find.get(id, list.id));

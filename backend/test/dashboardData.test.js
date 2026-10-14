@@ -72,6 +72,28 @@ afterEach(() => {
 });
 
 describe("GET /api/stats/currently-playing from Steam", () => {
+  it("leaves out games the user hid, straight away even though the Steam answer is cached", async () => {
+    const list = await createList(client);
+    const dota = await addGame(client, list.id, { igdb_id: 2963, name: "Dota 2" });
+    db.prepare("UPDATE users SET steam_id = ?, steam_verified = 1").run(STEAM_ID);
+    stubSteamRecent([
+      { appid: 570, name: "Dota 2", playtime_2weeks: 90, playtime_forever: 9000 },
+      { appid: 220, name: "Half-Life 2", playtime_2weeks: 600, playtime_forever: 700 },
+    ]);
+    stubIgdb({ catalogue: { 570: { id: 2963, name: "Dota 2" }, 220: { id: 233, name: "Half-Life 2" } } });
+
+    expect((await client.get("/api/stats/currently-playing")).body.games.map((g) => g.igdb_id)).toEqual([233, 2963]);
+
+    await client.put(`/api/lists/${list.id}/games/${dota.id}/hidden`).send({ hidden: true });
+    const hidden = await client.get("/api/stats/currently-playing");
+    expect(hidden.body.source).toBe("steam");
+    expect(hidden.body.games.map((g) => g.igdb_id)).toEqual([233]);
+    expect(steamCalls).toHaveLength(1);
+
+    await client.put(`/api/lists/${list.id}/games/${dota.id}/hidden`).send({ hidden: false });
+    expect((await client.get("/api/stats/currently-playing")).body.games.map((g) => g.igdb_id)).toEqual([233, 2963]);
+  });
+
   it("shows what was played in the last two weeks, most played first, with hours", async () => {
     await userWithSteam();
     stubSteamRecent([

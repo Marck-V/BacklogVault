@@ -13,6 +13,7 @@ ENV NODE_ENV=production \
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
+COPY scripts ./scripts
 # Pre-create the data dir owned by the unprivileged user so a fresh named volume inherits that ownership.
 RUN mkdir -p /data && chown node:node /data
 USER node

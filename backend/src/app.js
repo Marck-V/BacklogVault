@@ -12,6 +12,7 @@ import authRouter from "./authRoutes.js";
 import listsRouter from "./listsRoutes.js";
 import importRouter from "./importRoutes.js";
 import steamLinkRouter from "./steamLinkRoutes.js";
+import libraryRouter from "./libraryRoutes.js";
 import db from "./db.js";
 import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.js";
 
@@ -31,7 +32,10 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+// Bodies are small everywhere except restoring a backup file, which may hold thousands of games.
+const smallJson = express.json();
+const backupJson = express.json({ limit: "4mb" });
+app.use((req, res, next) => (req.path === "/api/library/restore" ? backupJson : smallJson)(req, res, next));
 app.use(cookieParser());
 app.use(attachUser);
 
@@ -106,7 +110,7 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
       .prepare(
         `SELECT DISTINCT lg.igdb_id
          FROM list_games lg JOIN lists l ON l.id = lg.list_id
-         WHERE l.user_id = ? AND lg.status IN ('Backlog', 'Playing')`
+         WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status IN ('Backlog', 'Playing')`
       )
       .all(userId);
     const uniqueIds = rows.map((r) => r.igdb_id);
@@ -115,7 +119,7 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
       .prepare(
         `SELECT COUNT(DISTINCT lg.igdb_id) AS completed_count
          FROM list_games lg JOIN lists l ON l.id = lg.list_id
-         WHERE l.user_id = ? AND lg.status = 'Completed'`
+         WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status = 'Completed'`
       )
       .get(userId);
 
@@ -126,7 +130,7 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
         `SELECT COALESCE(SUM(h), 0) AS total_hours_played FROM (
            SELECT MAX(lg.hours_played) AS h
            FROM list_games lg JOIN lists l ON l.id = lg.list_id
-           WHERE l.user_id = ?
+           WHERE l.user_id = ? AND lg.hidden = 0
            GROUP BY lg.igdb_id
          )`
       )
@@ -309,6 +313,7 @@ app.get("/api/library", (req, res) => {
   res.json({ lists: [...byList.values()] });
 });
 
+app.use("/api/library", libraryRouter);
 app.use("/api", steamLinkRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/lists", createWriteLimiter(), listsRouter);

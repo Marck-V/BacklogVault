@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { bulkUpdateStatus, getList, getLists, removeGameFromList, updateGameEntry } from './api'
+import { bulkSetHidden, bulkUpdateStatus, getList, getLists, removeGameFromList, setGameHidden, updateGameEntry } from './api'
 import GameSearch from './GameSearch'
 import SteamImport from './SteamImport'
 import GameDetailsModal from './GameDetailsModal'
@@ -11,7 +11,7 @@ import ConfirmDialog from './ConfirmDialog'
 import NotFound from './NotFound'
 import { usePageTitle } from './usePageTitle'
 import { SORT_OPTIONS, sortGames, formatPlaytime } from './sortGames'
-import { ArrowLeft, Check, LayoutGrid, List as ListIcon, SquareCheckBig, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Eye, EyeOff, LayoutGrid, List as ListIcon, SquareCheckBig, Trash2 } from 'lucide-react'
 
 const TABS = ['All', ...STATUSES]
 
@@ -22,6 +22,8 @@ export default function ListView() {
   const [error, setError] = useState(null)
   const [activeGame, setActiveGame] = useState(null)
   const [pendingRemove, setPendingRemove] = useState(null)
+  // Hiding asks first: { games } is one card's game, or everything picked in select mode.
+  const [pendingHide, setPendingHide] = useState(null)
   // Select mode: pick several games and change their status in one go.
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -90,11 +92,24 @@ export default function ListView() {
     }
   }
 
+  // Hidden games stay saved but live in their own collapsed section at the bottom, out of the tabs and the dashboard.
+  const shownGames = useMemo(() => (list ? list.games.filter((g) => !g.hidden) : []), [list])
+  const hiddenGames = useMemo(() => (list ? list.games.filter((g) => g.hidden) : []), [list])
+
   const visibleGames = useMemo(() => {
-    if (!list) return []
-    const filtered = activeTab === 'All' ? list.games : list.games.filter((g) => g.status === activeTab)
+    const filtered = activeTab === 'All' ? shownGames : shownGames.filter((g) => g.status === activeTab)
     return sortGames(filtered, sortKey)
-  }, [list, activeTab, sortKey])
+  }, [shownGames, activeTab, sortKey])
+
+  async function handleHide(game, hidden) {
+    applyLocalUpdate(game.id, { hidden: hidden ? 1 : 0 })
+    try {
+      await setGameHidden(id, game.id, hidden)
+    } catch (err) {
+      applyLocalUpdate(game.id, { hidden: hidden ? 0 : 1 })
+      setError(err.message)
+    }
+  }
 
   const showPlaytime = sortKey.startsWith('playtime')
 
@@ -152,6 +167,26 @@ export default function ListView() {
       setList((prev) => ({ ...prev, games: prev.games.map((game) => changed.get(game.id) ?? game) }))
       clearSelection()
       setBulkMessage({ text: `Moved ${result.updated} ${result.updated === 1 ? 'game' : 'games'} to ${status}.` })
+    } catch (err) {
+      setBulkMessage({ error: true, text: err.message })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function applyBulkHide() {
+    const ids = selectedGames.map((game) => game.id)
+    if (ids.length === 0) return
+    setBulkBusy(true)
+    setBulkMessage(null)
+    try {
+      const result = await bulkSetHidden(id, ids, true)
+      const changed = new Map(result.games.map((game) => [game.id, game]))
+      setList((prev) => ({ ...prev, games: prev.games.map((game) => changed.get(game.id) ?? game) }))
+      clearSelection()
+      setBulkMessage({
+        text: `Hid ${result.updated} ${result.updated === 1 ? 'game' : 'games'}. Find them under Hidden games at the bottom.`,
+      })
     } catch (err) {
       setBulkMessage({ error: true, text: err.message })
     } finally {
@@ -226,7 +261,10 @@ export default function ListView() {
       </div>
 
       {list.games.length === 0 && <p>No games added yet. Search below.</p>}
-      {list.games.length > 0 && visibleGames.length === 0 && <p>No games with this status.</p>}
+      {shownGames.length > 0 && visibleGames.length === 0 && <p>No games with this status.</p>}
+      {list.games.length > 0 && shownGames.length === 0 && (
+        <p>Every game in this list is hidden. Open Hidden games at the bottom to bring them back.</p>
+      )}
 
       {viewMode === 'grid' ? (
         <div className="results">
@@ -266,18 +304,32 @@ export default function ListView() {
                     status={game.status}
                     onChange={(newStatus) => handleStatusChange(game, newStatus)}
                   />
-                  <button
-                    type="button"
-                    className="icon-btn danger"
-                    aria-label={`Remove ${game.name} from this list`}
-                    title="Remove from list"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPendingRemove(game)
-                    }}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
+                  <div className="icon-btn-group">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Hide ${game.name} from stats`}
+                      title="Hide from stats"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingHide({ games: [game] })
+                      }}
+                    >
+                      <EyeOff size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      aria-label={`Remove ${game.name} from this list`}
+                      title="Remove from list"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingRemove(game)
+                      }}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -322,15 +374,26 @@ export default function ListView() {
                     status={game.status}
                     onChange={(newStatus) => handleStatusChange(game, newStatus)}
                   />
-                  <button
-                    type="button"
-                    className="icon-btn danger"
-                    aria-label={`Remove ${game.name} from this list`}
-                    title="Remove from list"
-                    onClick={() => setPendingRemove(game)}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
+                  <div className="icon-btn-group">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Hide ${game.name} from stats`}
+                      title="Hide from stats"
+                      onClick={() => setPendingHide({ games: [game] })}
+                    >
+                      <EyeOff size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      aria-label={`Remove ${game.name} from this list`}
+                      title="Remove from list"
+                      onClick={() => setPendingRemove(game)}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -343,12 +406,63 @@ export default function ListView() {
 
       <SteamImport listId={id} onImported={refresh} />
 
+      {hiddenGames.length > 0 && (
+        <details className="hidden-games">
+          <summary>
+            <EyeOff size={16} aria-hidden="true" />
+            Hidden games ({hiddenGames.length})
+          </summary>
+          <p className="hidden-games-note">
+            These are saved but left out of the dashboard totals and charts. Show a game to count it again.
+          </p>
+          <ul className="hidden-games-list">
+            {sortGames(hiddenGames, 'alpha').map((game) => (
+              <li key={game.id} className="hidden-game">
+                {game.cover_url ? (
+                  <img src={game.cover_url} alt="" width="34" height="45" loading="lazy" decoding="async" />
+                ) : (
+                  <div className="game-row-cover-placeholder" />
+                )}
+                <span className="hidden-game-name" translate="no">
+                  {game.name}
+                </span>
+                <span className={`status-badge status-${game.status.toLowerCase()} static`}>{game.status}</span>
+                <button type="button" className="btn-ghost" onClick={() => handleHide(game, false)}>
+                  <Eye size={15} aria-hidden="true" />
+                  Show
+                  <span className="visually-hidden"> {game.name} again</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {activeGame && (
         <GameDetailsModal
           game={activeGame}
           listId={id}
           onClose={() => setActiveGame(null)}
           onUpdate={(updates) => applyLocalUpdate(activeGame.id, updates)}
+        />
+      )}
+
+      {pendingHide && (
+        <ConfirmDialog
+          message={
+            pendingHide.games.length === 1
+              ? `Hide “${pendingHide.games[0].name}”? It stays saved but is left out of your dashboard stats. You can show it again from Hidden games at the bottom of the list.`
+              : `Hide ${pendingHide.games.length} games? They stay saved but are left out of your dashboard stats. You can show them again from Hidden games at the bottom of the list.`
+          }
+          confirmLabel={pendingHide.games.length === 1 ? 'Hide Game' : 'Hide Games'}
+          cancelLabel="Cancel"
+          onConfirm={() => {
+            const { games, bulk } = pendingHide
+            setPendingHide(null)
+            if (bulk) applyBulkHide()
+            else handleHide(games[0], true)
+          }}
+          onCancel={() => setPendingHide(null)}
         />
       )}
 
@@ -371,6 +485,7 @@ export default function ListView() {
           onSelectAll={() => setSelectedIds(new Set(visibleGames.map((game) => game.id)))}
           onClear={clearSelection}
           onApply={applyBulkStatus}
+          onHide={() => setPendingHide({ games: selectedGames, bulk: true })}
         />
       )}
     </div>

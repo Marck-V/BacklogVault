@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useAuth } from './auth'
 import { usePageTitle } from './usePageTitle'
 
 // These two are set when the site is deployed (VITE_DATA_COUNTRY and VITE_CONTACT_EMAIL). Steam's terms require the
@@ -8,6 +9,7 @@ const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL?.trim()
 
 export default function PrivacyPage() {
   usePageTitle('Privacy and Steam data')
+  const accountsEnabled = Boolean(useAuth()?.accountsEnabled)
 
   return (
     <article className="policy">
@@ -32,15 +34,29 @@ export default function PrivacyPage() {
       <ul>
         <li>Your Steam ID (the number that identifies your account) and your Steam display name.</li>
         <li>For each game you import, the hours you have played, kept with that game in your list.</li>
+        <li>The games in your lists, and the status, rating, hours and notes you add to them.</li>
+        {accountsEnabled && <li>If you create an account, your email address and a scrambled (hashed) password.</li>}
         <li>
-          The games in your lists, the status, rating and notes you add, and, if you create an account, your email
-          address and a scrambled (hashed) password.
+          One cookie, <code>bv_session</code>, that keeps you signed in to your own library. It is needed for the site
+          to work, can only be read by our server, and is not used for tracking or advertising. We use no analytics or
+          advertising cookies.
         </li>
         <li>
           Your recently played games are kept in the server&apos;s memory for ten minutes to avoid asking Steam again
           and again. They are not saved to the database.
         </li>
       </ul>
+
+      <h2>Your library and this device</h2>
+      <p>
+        {accountsEnabled
+          ? 'You can use BacklogVault without an account: your library is then tied to a cookie on this device and browser.'
+          : 'BacklogVault has no accounts. Your library is tied to a cookie on this device and browser, so it is only available where that cookie is.'}{' '}
+        Clearing your browser data, using a private window, or switching browser or device starts you with an empty
+        library. A library that has not been opened for 90 days is deleted automatically. To keep a copy or move to
+        another device, use <strong>Download Backup</strong> and <strong>Restore From Backup</strong> under Your data on
+        the home page.
+      </p>
 
       <h2>Who else receives it</h2>
       <ul>
@@ -71,14 +87,15 @@ export default function PrivacyPage() {
         </li>
         <li>You can also remove individual games, or delete a list, at any time. Deleting a list deletes everything in it.</li>
         <li>
-          {CONTACT_EMAIL ? (
-            <>
-              To have your whole account and everything in it deleted, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
-            </>
-          ) : (
-            'To have your whole account deleted, contact details will be given here when the site is deployed.'
-          )}
+          <strong>Delete My Data</strong> (under Your data on the home page) deletes everything we hold about you at once:
+          every list and game, your Steam connection, your session{accountsEnabled ? ' and your account' : ''}. It asks you to
+          confirm first, and it cannot be undone.
         </li>
+        {CONTACT_EMAIL && (
+          <li>
+            For any question about your data, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+          </li>
+        )}
       </ul>
 
       <h2>Steam data is provided &quot;as is&quot;</h2>

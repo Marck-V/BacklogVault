@@ -13,31 +13,39 @@ const MESSAGES = {
 
 // Steam sends visitors back to the home page with ?steam=linked or ?steam=error&reason=... This turns that into a
 // message, then tidies the address so a refresh does not show it again.
+function readNotice(searchParams) {
+  if (searchParams.get('data') === 'deleted') return { ok: true, text: 'Your data was deleted.' }
+  const outcome = searchParams.get('steam')
+  if (outcome === 'linked') {
+    return { ok: true, text: 'Steam connected. Your recently played games will now show on the dashboard.' }
+  }
+  if (outcome === 'disconnected') return { ok: true, text: 'Steam disconnected, and your library was deleted.' }
+  if (outcome === 'error') {
+    return { ok: false, text: MESSAGES[searchParams.get('reason')] ?? 'Steam sign-in did not work. Please try again.' }
+  }
+  return null
+}
+
+// Shown above every page (so it survives the page being rebuilt when the signed-in state changes). It reads the message
+// from the address, then tidies the address so a refresh does not show it again.
 export default function SteamNotice() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [notice] = useState(() => {
-    const outcome = searchParams.get('steam')
-    if (outcome === 'linked') {
-      return { ok: true, text: 'Steam connected. Your recently played games will now show on the dashboard.' }
-    }
-    if (outcome === 'disconnected') {
-      return { ok: true, text: 'Steam disconnected, and your library was deleted.' }
-    }
-    if (outcome === 'error') {
-      return { ok: false, text: MESSAGES[searchParams.get('reason')] ?? 'Steam sign-in did not work. Please try again.' }
-    }
-    return null
-  })
+  const [notice, setNotice] = useState(() => readNotice(searchParams))
   const [dismissed, setDismissed] = useState(false)
 
-  // Remove the code from the address once it has been read. `replace` keeps the back button from returning to it.
   useEffect(() => {
-    if (!searchParams.has('steam') && !searchParams.has('reason')) return
+    const found = readNotice(searchParams)
+    if (found) {
+      setNotice(found)
+      setDismissed(false)
+    }
+    if (!searchParams.has('steam') && !searchParams.has('reason') && !searchParams.has('data')) return
     setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous)
         next.delete('steam')
         next.delete('reason')
+        next.delete('data')
         return next
       },
       { replace: true }

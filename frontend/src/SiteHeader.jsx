@@ -5,7 +5,7 @@ import ConfirmDialog from './ConfirmDialog'
 import { LogIn, LogOut, UserPlus } from 'lucide-react'
 
 export default function SiteHeader() {
-  const { user, loading, openAuth, logout } = useAuth()
+  const { user, accountsEnabled, loading, openAuth, logout } = useAuth()
   const [confirmSignOut, setConfirmSignOut] = useState(false)
 
   function handleSignOut() {
@@ -21,7 +21,7 @@ export default function SiteHeader() {
       </Link>
 
       <div className="header-actions">
-        {!loading && !user && (
+        {accountsEnabled && !loading && !user && (
           <>
             <button type="button" className="btn-ghost" onClick={() => openAuth('signin')}>
               <LogIn size={15} aria-hidden="true" />
@@ -33,7 +33,7 @@ export default function SiteHeader() {
             </button>
           </>
         )}
-        {user?.isGuest && (
+        {accountsEnabled && user?.isGuest && (
           <>
             <span className="user-pill">Guest</span>
             <button type="button" onClick={() => openAuth('signup')}>
@@ -46,7 +46,7 @@ export default function SiteHeader() {
             </button>
           </>
         )}
-        {user && !user.isGuest && (
+        {accountsEnabled && user && !user.isGuest && (
           <>
             <span className="user-pill" title={user.email}>
               {user.email}

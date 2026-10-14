@@ -2,6 +2,8 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import db from "./db.js";
 import { asyncHandler } from "./asyncHandler.js";
+import { accountsEnabled } from "./config.js";
+import { forgetRecentlyPlayed } from "./dashboardData.js";
 import {
   hashPassword,
   verifyPassword,
@@ -41,11 +43,39 @@ function validateNewCredentials({ email, password }) {
 const router = express.Router();
 const limiter = createAuthLimiter();
 
+// Tells the website who is here, and whether it should offer sign up and sign in at all.
 router.get("/me", (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: req.user, accountsEnabled: accountsEnabled() });
 });
 
-router.post("/register", limiter, asyncHandler(async (req, res) => {
+// While accounts are off, the endpoints are off too, not just hidden in the page.
+const requireAccounts = (req, res, next) =>
+  accountsEnabled() ? next() : res.status(404).json({ error: "Accounts aren't available yet." });
+
+// Deletes everything about the visitor: their lists and games, the Steam link, their session, and the account itself if
+// they made one. It cannot be undone, so the request must say so on purpose.
+router.delete("/me", (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "There is no data to delete." });
+  if (req.body?.deleteEverything !== true) {
+    return res.status(400).json({ error: "This deletes all of your data. Send deleteEverything: true to confirm." });
+  }
+
+  const deleted = db.transaction(() => {
+    const games = db
+      .prepare("SELECT COUNT(*) AS n FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ?")
+      .get(req.user.id).n;
+    const lists = db.prepare("SELECT COUNT(*) AS n FROM lists WHERE user_id = ?").get(req.user.id).n;
+    // Lists, games, sessions, "count this game" choices and sign-in attempts all go with the user (the database cascades).
+    db.prepare("DELETE FROM users WHERE id = ?").run(req.user.id);
+    return { lists, games };
+  })();
+
+  forgetRecentlyPlayed(req.user.id);
+  clearSessionCookie(res);
+  res.json({ deleted });
+});
+
+router.post("/register", requireAccounts, limiter, asyncHandler(async (req, res) => {
   const creds = readCredentials(req.body);
   const problem = validateNewCredentials(creds);
   if (problem) return res.status(400).json({ error: problem });
@@ -85,7 +115,7 @@ router.post("/register", limiter, asyncHandler(async (req, res) => {
   res.status(201).json({ user: { id: userId, email: creds.email, isGuest: false } });
 }));
 
-router.post("/login", limiter, asyncHandler(async (req, res) => {
+router.post("/login", requireAccounts, limiter, asyncHandler(async (req, res) => {
   const { email, password } = readCredentials(req.body);
   if (!email || !password || password.length > 128) {
     return res.status(400).json({ error: "Email and password are required" });

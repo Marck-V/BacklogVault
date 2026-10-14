@@ -1,9 +1,9 @@
-import { CheckCheck, X } from 'lucide-react'
+import { CheckCheck, EyeOff, X } from 'lucide-react'
 import { STATUSES } from './statuses'
 
 // The bar that appears at the bottom of the list page in select mode: how many games are picked, quick ways to pick
 // more or none, and one button per status to apply to all of them at once.
-export default function BulkStatusBar({ count, visibleCount, busy, message, onSelectAll, onClear, onApply }) {
+export default function BulkStatusBar({ count, visibleCount, busy, message, onSelectAll, onClear, onApply, onHide }) {
   const none = count === 0
   return (
     <section className="bulk-bar" aria-label="Change several games at once">
@@ -36,6 +36,17 @@ export default function BulkStatusBar({ count, visibleCount, busy, message, onSe
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="btn-ghost"
+        disabled={busy || none}
+        onClick={onHide}
+        title="Keep the games but leave them out of the dashboard"
+      >
+        <EyeOff size={15} aria-hidden="true" />
+        Hide
+      </button>
 
       <span className="bulk-message" role="status">
         {message && !message.error ? message.text : ''}

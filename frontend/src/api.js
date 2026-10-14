@@ -63,6 +63,23 @@ export function bulkUpdateStatus(listId, ids, status) {
   })
 }
 
+// Hiding keeps the game saved but leaves it out of every dashboard number; showing it again undoes that.
+export function setGameHidden(listId, gameId, hidden) {
+  return request(`/api/lists/${listId}/games/${gameId}/hidden`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden }),
+  })
+}
+
+export function bulkSetHidden(listId, ids, hidden) {
+  return request(`/api/lists/${listId}/games`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, hidden }),
+  })
+}
+
 export function getGameDetails(igdbId) {
   return request(`/api/games/${igdbId}/details`)
 }
@@ -89,6 +106,26 @@ export function refreshFromSteam() {
 
 export function getCurrentlyPlaying() {
   return request('/api/stats/currently-playing')
+}
+
+// The whole library as a backup file (the browser downloads it, using the cookie it already has).
+export const BACKUP_URL = `${API_BASE}/api/library/backup`
+
+export function restoreBackup(backup) {
+  return request('/api/library/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(backup),
+  })
+}
+
+// Deletes everything about the visitor. The server insists the request says so on purpose.
+export function deleteMyData() {
+  return request('/api/auth/me', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deleteEverything: true }),
+  })
 }
 
 export function getMe() {
