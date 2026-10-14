@@ -80,10 +80,11 @@ cd frontend && npm install && npm run dev
 | `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | API | required | Twitch credentials for IGDB |
 | `PORT` | API | `4000` | Port the API listens on |
 | `DB_PATH` | API | `backend/backlog.db` | SQLite file location (`:memory:` in tests) |
-| `TRUST_PROXY` | API | `0` | Number of reverse proxies in front of the app. Per-IP limits depend on it: `0` locally (nothing in front, so a faked `X-Forwarded-For` is ignored), `1` on Railway |
+| `TRUST_PROXY` | API | `0` | Number of reverse proxies in front of the app. Per-IP limits depend on it: `0` locally (nothing in front, so a faked `X-Forwarded-For` is ignored). Not used on Railway |
+| `CLIENT_IP_HEADER` | API | empty (off) | A header the host's proxy sets to the visitor's real address. On Railway: `X-Real-IP`. When set, `X-Forwarded-For` is ignored completely (Railway passes a visitor's own copy through, so it could be faked) |
 | `STATIC_DIR` | API | empty (off) | Folder of the built React app to serve. The Docker image sets it, so one container is the whole site; in development Vite serves the site instead |
 | `COOKIE_SECURE` | API | `false` | Set `true` when served over HTTPS |
-| `CORS_ORIGIN` | API | `http://localhost:5173` | Comma-separated origins allowed to call the API (local development only) |
+| `CORS_ORIGIN` | API | `http://localhost:5173` in development, none in production | Comma-separated origins allowed to call the API (local development only) |
 | `AUTH_RATE_LIMIT_MAX` | API | `10` per 15 min | Login and register attempts per IP |
 | `ENABLE_ACCOUNTS` | API | `false` | Sign up and sign in are off by default: visitors get a library on their device with no account. `true` turns accounts on (the website follows the server) |
 | `STEAM_API_KEY` | API | empty (feature off) | [Steam Web API key](https://steamcommunity.com/dev/apikey); turns on "Connect Steam". Keep it on the server only |
@@ -132,7 +133,7 @@ Railway builds the `Dockerfile` at the root of this repo and runs it as one cont
    | `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | your Twitch/IGDB credentials |
    | `STEAM_API_KEY` | optional, turns on Connect Steam |
    | `PUBLIC_URL` | `https://<your domain from step 5>` |
-   | `TRUST_PROXY` | `1` (Railway's proxy is in front of the app) |
+   | `CLIENT_IP_HEADER` | `X-Real-IP` (Railway's header with the visitor's real address; every per-visitor limit depends on it) |
    | `COOKIE_SECURE` | `true` (the site is HTTPS) |
    | `ENABLE_ACCOUNTS` | `false` |
    | `DATA_COUNTRY` | `United States` (shown on the privacy page; Railway passes it to the build) |
@@ -171,6 +172,8 @@ users cannot see each other's data through both the API and the CSV export.
   cleanly on SIGTERM.
 - **Browser and container hardening:** a strict Content-Security-Policy and other headers on every page, compression and
   caching, HTTPS from the host, the app running as an unprivileged user, log rotation and memory limits, and base images pinned by digest with Dependabot updates.
+
+The latest security review, its findings and what was checked are in [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
 
 ## Known limitations
 

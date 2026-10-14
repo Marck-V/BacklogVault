@@ -15,8 +15,11 @@ async function getAccessToken() {
     grant_type: "client_credentials",
   });
 
-  const res = await fetch(`${TWITCH_TOKEN_URL}?${params.toString()}`, {
+  // The secret goes in the body, not the address: addresses end up in logs and error messages more easily.
+  const res = await fetch(TWITCH_TOKEN_URL, {
     method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
   });
 
   if (!res.ok) {

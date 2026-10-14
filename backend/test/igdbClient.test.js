@@ -43,7 +43,11 @@ describe("igdbRequest", () => {
     await igdbRequest("games", "fields name;");
     const [url, options] = tokenCalls()[0];
     expect(options.method).toBe("POST");
-    const params = new URL(url).searchParams;
+    // The secret travels in the body, never in the address.
+    expect(String(url)).not.toContain("test-secret");
+    expect(new URL(url).search).toBe("");
+    expect(options.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    const params = new URLSearchParams(options.body);
     expect(params.get("client_id")).toBe("test-client");
     expect(params.get("client_secret")).toBe("test-secret");
     expect(params.get("grant_type")).toBe("client_credentials");
