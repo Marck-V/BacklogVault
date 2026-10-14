@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
+import compression from "compression";
 import { igdbRequest } from "./igdbClient.js";
 import { escapeIgdbString } from "./igdbQuery.js";
 import { createIgdbLimiter } from "./igdbLimiter.js";
@@ -19,6 +20,7 @@ import { refreshPlaytime } from "./steamRefresh.js";
 import { SteamError } from "./steam.js";
 import db from "./db.js";
 import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.js";
+import { siteRouter } from "./staticSite.js";
 
 const app = express();
 
@@ -28,6 +30,8 @@ if (proxyHops > 0) app.set("trust proxy", proxyHops);
 
 // Standard security headers (and no X-Powered-By, which tells attackers which framework to target).
 app.use(helmet());
+// gzip for everything worth compressing (the main script shrinks to about a third).
+app.use(compression());
 
 // Credentialed CORS cannot use "*": only the listed origins may send the session cookie cross-origin (local dev).
 app.use(
@@ -343,6 +347,10 @@ app.use("/api/lists", createWriteLimiter(), listsRouter);
 app.use("/api/import", importRouter);
 
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
+
+// In the Docker image the API also serves the website (STATIC_DIR is the built React app), so one service is the whole
+// site. In local development Vite serves the website instead and this is off.
+if (process.env.STATIC_DIR) app.use(siteRouter(process.env.STATIC_DIR));
 
 // Last stop for errors: always JSON, never a stack trace or internal message.
 // Express only treats a function with exactly four parameters as an error handler, so `next` must stay.

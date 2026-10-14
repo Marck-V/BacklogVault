@@ -1,0 +1,18 @@
+# Keeps the build context small and, above all, keeps secrets and local data out of the image.
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.bak
+.git
+.github
+ts-report
+backend/test
+backend/vitest.config.js
+frontend/src/**/*.test.jsx
+frontend/src/**/*.test.js

@@ -1,10 +1,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import request from "supertest";
 
-// A chain of two proxies before the API, for example a CDN in front of Caddy: the first puts the visitor in
+// A chain of two proxies before the API, for example a CDN in front of Railway's proxy: the first puts the visitor in
 // X-Forwarded-For and the second appends the address it saw. supertest plays the part of the last hop. (Production
-// today has one proxy, Caddy; this test pins down how TRUST_PROXY counts hops, so it stays useful either way.)
-const CADDY = "172.18.0.5";
+// today has one proxy, Railway's; this test pins down how TRUST_PROXY counts hops, so it stays useful either way.)
+const PROXY = "172.18.0.5";
 
 async function loadApp(hops) {
   vi.resetModules();
@@ -16,7 +16,7 @@ async function loadApp(hops) {
 const tryLogin = (app, visitor) =>
   request(app)
     .post("/api/auth/login")
-    .set("X-Forwarded-For", `${visitor}, ${CADDY}`)
+    .set("X-Forwarded-For", `${visitor}, ${PROXY}`)
     .send({ email: "nobody@example.com", password: "whatever-123" });
 
 afterEach(() => {
@@ -50,11 +50,11 @@ describe("per-IP limits behind two proxies", () => {
   it("ignores an address a visitor forges themselves when the hop count is right", async () => {
     const app = await loadApp(2);
 
-    // The visitor sends their own fake X-Forwarded-For to Caddy, which appends the real one.
+    // The visitor sends their own fake X-Forwarded-For to the first proxy, which appends the real one.
     const forged = (spoof) =>
       request(app)
         .post("/api/auth/login")
-        .set("X-Forwarded-For", `${spoof}, 203.0.113.7, ${CADDY}`)
+        .set("X-Forwarded-For", `${spoof}, 203.0.113.7, ${PROXY}`)
         .send({ email: "nobody@example.com", password: "whatever-123" });
 
     expect((await forged("1.1.1.1")).status).toBe(401);

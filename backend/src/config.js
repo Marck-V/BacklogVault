@@ -1,4 +1,4 @@
-// Number of reverse proxies between the internet and this API (Caddy alone is 1; a CDN in front of Caddy would make it 2).
+// Number of reverse proxies between the internet and this API (none locally is 0; Railway's proxy is 1; a CDN in front of that would make it 2).
 // Express uses it to find the real visitor address in X-Forwarded-For, which every per-IP rate limit depends on.
 // Too low and every visitor looks like the proxy; too high and a visitor could forge their own address.
 export function trustProxyHops(value = process.env.TRUST_PROXY) {
@@ -28,7 +28,7 @@ export function publicUrl(env = process.env) {
   return originOf(env.PUBLIC_URL || `http://localhost:${env.PORT || 4000}`, "PUBLIC_URL");
 }
 
-// Where visitors land after Steam sign-in: the website. Same as publicUrl when one address serves both (Docker/Caddy),
+// Where visitors land after Steam sign-in: the website. Same as publicUrl when one address serves both (the Docker image),
 // and the Vite dev server in local development, where the API and the website are on different ports.
 export function appUrl(env = process.env) {
   if (env.APP_URL) return originOf(env.APP_URL, "APP_URL");
