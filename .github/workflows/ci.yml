@@ -84,6 +84,8 @@ jobs:
     env:
       IGDB_CLIENT_ID: ci-placeholder
       IGDB_CLIENT_SECRET: ci-placeholder
+      # Accounts are off by default (guests-only launch); the smoke test still checks the guest-to-account upgrade.
+      ENABLE_ACCOUNTS: "true"
     steps:
       - uses: actions/checkout@v7
       - name: Build all images
