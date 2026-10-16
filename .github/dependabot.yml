@@ -1,23 +1,49 @@
 # Keeps dependencies, base images and CI actions up to date by opening a pull request for each update.
 # Base images are pinned by digest, so without this they would never receive security fixes.
+#
+# Two rules learned from the first round of updates:
+# - The site runs on Node 24, a long-term-support (LTS) release. Dependabot proposes every new major Node version,
+#   including short-lived odd ones (25) and ones the site does not run on yet (26). Major Node upgrades, for the Docker
+#   image and for the @types/node definitions that describe it, are made by hand when moving to the next LTS.
+# - react and react-dom must always be the exact same version. Updated in separate pull requests, each one alone breaks
+#   every test, so they (and their type definitions) are grouped into one pull request.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /backend
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
   - package-ecosystem: npm
     directory: /ts-report
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
