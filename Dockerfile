@@ -2,7 +2,7 @@
 # Base images are pinned by digest so a rebuild cannot silently change them; Dependabot proposes updates.
 
 # Stage 1: build the React app into static files.
-FROM node:24@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
+FROM node:25@sha256:78839ac448c23517f8eab2e8f7943d9b4f73979eb7f8bed2c73dbf72ff869e7b AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -18,14 +18,14 @@ ENV VITE_API_BASE="" \
 RUN npm run build
 
 # Stage 2: install the API's production dependencies. The full Debian image has the compiler better-sqlite3 needs.
-FROM node:24@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS deps
+FROM node:25@sha256:78839ac448c23517f8eab2e8f7943d9b4f73979eb7f8bed2c73dbf72ff869e7b AS deps
 WORKDIR /app
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 
 # Stage 3: the slim runtime image. Same Debian/glibc base, so the compiled module works. No compilers, no frontend
 # toolchain: just Node, the API and the built site.
-FROM node:24-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=4000 \
