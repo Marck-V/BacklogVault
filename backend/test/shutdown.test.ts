@@ -92,7 +92,7 @@ describe("createShutdown", () => {
 // Windows cannot deliver SIGTERM to a child process the way Linux and Docker do, so this runs on Linux and in CI.
 describe.skipIf(process.platform === "win32")("the real server process", () => {
   it("exits 0 and logs a clean shutdown when sent SIGTERM", async () => {
-    const serverFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "server.js");
+    const serverFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "server.ts");
     const child = spawn(process.execPath, [serverFile], {
       env: { ...process.env, PORT: "0", DB_PATH: ":memory:" },
       stdio: ["ignore", "pipe", "pipe"],
