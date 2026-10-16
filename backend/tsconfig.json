@@ -1,0 +1,19 @@
+{
+  // Node runs these .ts files directly (it strips the types), so TypeScript only checks: it never builds anything.
+  // That is why imports use .ts extensions and only "erasable" syntax is allowed (no enums or namespaces).
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src", "scripts", "vitest.config.ts", "../shared"]
+}

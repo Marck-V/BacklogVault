@@ -4,7 +4,6 @@
 **/coverage
 **/.env
 **/.env.*
-!**/.env.example
 **/*.db
 **/*.db-shm
 **/*.db-wal
@@ -13,6 +12,6 @@
 .github
 ts-report
 backend/test
-backend/vitest.config.js
-frontend/src/**/*.test.jsx
-frontend/src/**/*.test.js
+backend/vitest.config.ts
+frontend/src/**/*.test.tsx
+frontend/src/**/*.test.ts

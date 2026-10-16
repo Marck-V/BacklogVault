@@ -18,8 +18,8 @@ services:
         DATA_COUNTRY: ${DATA_COUNTRY:-}
         CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     environment:
-      IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see .env.example)}
-      IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see .env.example)}
+      IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:?Set IGDB_CLIENT_ID in a root .env file (see the README)}
+      IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:?Set IGDB_CLIENT_SECRET in a root .env file (see the README)}
       # Optional: a Steam Web API key turns on "Connect Steam" (leave empty to switch it off)
       STEAM_API_KEY: ${STEAM_API_KEY:-}
       # The address visitors type to reach the site; Steam sends people back here after "Connect Steam".

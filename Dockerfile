@@ -44,4 +44,5 @@ EXPOSE 4000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||4000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "src/server.js"]
+# Node runs the TypeScript source directly (it strips the types), so there is no build step for the API.
+CMD ["node", "src/server.ts"]

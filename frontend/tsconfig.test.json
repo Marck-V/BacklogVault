@@ -1,0 +1,11 @@
+{
+  // The tests, with the same strict settings except one: values read from the fake API responses and the page may
+  // leave callback parameters untyped.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src", "vite.config.ts", "../shared"],
+  "exclude": []
+}

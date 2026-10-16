@@ -1,0 +1,9 @@
+{
+  // The tests, checked with the same strict settings as the app except one: supertest types every response body as
+  // "any", so callbacks over response data (res.body.games.map((g) => ...)) may leave their parameter untyped.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": false
+  },
+  "include": ["src", "scripts", "test", "vitest.config.ts", "../shared"]
+}
