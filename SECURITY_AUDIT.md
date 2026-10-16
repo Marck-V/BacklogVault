@@ -13,7 +13,7 @@ tester; this is a careful engineering review, not a certification.
 
 | # | Finding | Severity | Status |
 |---|---|---|---|
-| 1 | Every per-visitor rate limit could be bypassed on Railway with a faked `X-Forwarded-For` header | **High** | **Fixed in code** (not yet deployed); needs one Railway setting and one live check |
+| 1 | Every per-visitor rate limit could be bypassed on Railway with a faked `X-Forwarded-For` header | **High** | **Fixed and verified live** |
 | 2 | Data could be lost: no automated server backups, and Railway deletes trial volumes 30 days after the credit runs out on the Free plan | **Medium** | Open: needs a plan decision |
 | 3 | Whoever controls your GitHub account controls the live site (automatic deploys); IGDB client secret may still be the one pasted in chat earlier | **Medium** | Open: account settings |
 | 4 | In production the API still lets the local development address `http://localhost:5173` call it with cookies | Low | **Fixed** |
@@ -29,7 +29,7 @@ Nothing was found that exposes one visitor's data to another, lets anyone run co
 
 ## Findings
 
-### 1. Rate limits could be bypassed on Railway (High, fixed in code)
+### 1. Rate limits could be bypassed on Railway (High, fixed and verified live)
 **What:** every per-visitor limit (game searches and other IGDB lookups, new guest sessions, list changes, Steam imports
 and sign-ins, backup restores) counts by the visitor's address. With `TRUST_PROXY=1`, the app read that address from
 the `X-Forwarded-For` header. Railway's proxy passes a visitor's own `X-Forwarded-For` through unchanged and reports the
@@ -51,10 +51,10 @@ Files: `backend/src/clientIp.js`, `backend/src/config.js`, `backend/src/app.js`.
 made tests fail; and in the real Docker image configured like Railway, a faked `X-Forwarded-For` no longer helped (the
 third request was refused) while a different real visitor still got through.
 
-**Still to do:** (a) deploy; (b) in Railway Variables add `CLIENT_IP_HEADER=X-Real-IP` and delete `TRUST_PROXY`;
-(c) one live check, with your approval first, that Railway replaces a visitor's own `X-Real-IP` with the real address
-rather than passing it through. If Railway passed it through, this header could be faked too, and a different approach
-would be needed.
+**Verified live (2026-10-14, after deploying and setting `CLIENT_IP_HEADER=X-Real-IP`):** 12 restore requests, each
+claiming a different made-up `X-Real-IP`, then one normal request: the first 10 got 400, requests 11 and 12 got 429, and
+the normal request got 429 with 0 of 10 left. Railway replaces a visitor's own `X-Real-IP` with the real address, so it
+cannot be faked, and every per-visitor limit now counts real visitors.
 
 ### 2. Data durability (Medium, open)
 Libraries live in one SQLite file on a Railway volume. Railway's docs say trial volumes are deleted 30 days after the
@@ -135,5 +135,5 @@ that Steam's `openid.signed` list includes `claimed_id`, `identity`, `return_to`
 ## Appendix: requests sent to the live site during this work
 All on 2026-10-14, about 40 in total: a header check of 12 kinds of request (page, app routes, files, API paths),
 including one 4.5 MB and one 6 MB upload to the restore endpoint (both refused); one game search; a few page loads; and
-13 small requests to the restore endpoint, 12 of them with a made-up `X-Forwarded-For`. From now on, any request to the
-live site is described and approved first.
+13 small requests to the restore endpoint, 12 of them with a made-up `X-Forwarded-For`. After the fix, with your
+approval: 13 more, 12 of them with a made-up `X-Real-IP`. Any request to the live site is described and approved first.
