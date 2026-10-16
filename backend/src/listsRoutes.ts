@@ -10,7 +10,8 @@ import { createGuestLimiter } from "./writeLimiters.ts";
 const router = express.Router();
 
 // Every list route goes through this: a list you do not own looks exactly like a list that does not exist.
-const ownedList = (req: Request) => findOwnedList(req.user?.id, req.params.id ?? "");
+// (Express 5 types a route parameter as a string or, for wildcard routes, a list; :id is always a single string.)
+const ownedList = (req: Request) => findOwnedList(req.user?.id, String(req.params.id ?? ""));
 
 router.get("/", (req, res) => {
   if (!req.user) return res.json([]);
@@ -100,7 +101,8 @@ router.put("/:id/games/:gameId", (req, res) => {
   const list = ownedList(req);
   if (!list) return res.status(404).json({ error: "Game not found in list" });
 
-  const { status, rating, hoursPlayed, notes } = req.body;
+  // Express 5 leaves the body undefined when a request sends none, so a body-less request gets a 400, not a crash.
+  const { status, rating, hoursPlayed, notes } = req.body ?? {};
 
   if (!VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(", ")}` });
