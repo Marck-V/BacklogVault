@@ -114,6 +114,12 @@ describe("updating a game entry", () => {
 
   const put = (body) => client.put(`/api/lists/${list.id}/games/${game.id}`).send(body);
 
+  it("rejects a request with no body at all (400, never a crash)", async () => {
+    const res = await client.put(`/api/lists/${list.id}/games/${game.id}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/status must be one of/);
+  });
+
   it("rejects an invalid status", async () => {
     const res = await put({ status: "Not Playing" });
     expect(res.status).toBe(400);
