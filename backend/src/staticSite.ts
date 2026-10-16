@@ -35,7 +35,8 @@ export function siteRouter(dir: string) {
 
   router.use(express.static(dir, { index: false, cacheControl: false, setHeaders: noCache }));
 
-  router.get("*", (req, res) => {
+  // Express 5 path syntax: "/{*rest}" matches any address, including "/".
+  router.get("/{*rest}", (req, res) => {
     noCache(res);
     res.sendFile(path.join(dir, "index.html"));
   });
