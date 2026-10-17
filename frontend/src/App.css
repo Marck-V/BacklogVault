@@ -1147,7 +1147,9 @@ button:disabled {
 
 .left-out-list {
   list-style: none;
-  margin: 0.6rem 0 0.4rem;
+  /* Narrow enough that a name and its hours read as one row on a wide screen. */
+  max-width: 40rem;
+  margin: 0.6rem auto 0.4rem;
   padding: 0;
   text-align: left;
 }
@@ -1172,9 +1174,17 @@ button:disabled {
 }
 
 .left-out-hours {
+  display: grid;
+  grid-template-columns: 9.5rem 10rem;
   color: var(--text-muted);
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The dot between the two figures is only for the narrow layout, where they share one line. */
+.left-out-sep {
+  display: none;
 }
 
 .left-out-list input[type='checkbox'] {
@@ -1349,10 +1359,15 @@ button:disabled {
   }
 
   .left-out-hours {
+    display: block;
     grid-column: 1;
     grid-row: 2;
     text-align: left;
     white-space: normal;
+  }
+
+  .left-out-sep {
+    display: inline;
   }
 
   .left-out-list input[type='checkbox'] {

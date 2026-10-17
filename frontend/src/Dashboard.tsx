@@ -367,8 +367,14 @@ export default function Dashboard() {
                 <li key={game.igdb_id}>
                   <label>
                     <span className="left-out-name">{game.name}</span>
+                    {/* Two right-aligned columns, so the numbers line up from row to row. IGDB sends 0 when it has no
+                        100% estimate, which is shown as a dash rather than a misleading "0 hours". */}
                     <span className="left-out-hours">
-                      {formatHours(game.main_story_seconds)} main · {formatHours(game.completionist_seconds)} 100%
+                      <span>{formatHours(game.main_story_seconds)} main</span>
+                      <span className="left-out-sep" aria-hidden="true">
+                        {' · '}
+                      </span>
+                      <span>{game.completionist_seconds ? formatHours(game.completionist_seconds) : '—'} 100%</span>
                     </span>
                     <input type="checkbox" checked={game.included} onChange={() => toggleIncluded(game)} />
                   </label>
