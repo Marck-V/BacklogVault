@@ -67,6 +67,17 @@ describe('Dashboard', () => {
     expect(screen.getByText(/70 with no\s+estimate/)).toBeTruthy()
   })
 
+  it('shows a dash, not "0 hours", when IGDB has no 100% estimate for a left-out game', async () => {
+    const noFull = { ...GAME, completionist_seconds: 0 }
+    vi.mocked(getTimeToBeatStats).mockResolvedValue({ ...BASE, games_left_out: 1, over_limit_games: [noFull] })
+    render(<Dashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: /1 game with unrealistic estimates/ }))
+    const row = screen.getByText('VRChat').closest('label')!
+    expect(row.textContent).toContain('— 100%')
+    expect(row.textContent).not.toContain('0 hours 100%')
+    expect(row.textContent).toContain('50,005 hours main')
+  })
+
   it('opens the left-out games on click and lets you count one', async () => {
     const withGame = { ...BASE, games_left_out: 1, over_limit_games: [GAME] }
     vi.mocked(getTimeToBeatStats).mockResolvedValue(withGame)
