@@ -123,6 +123,8 @@ export interface ListGame {
   notes: string | null;
   date_completed: string | null;
   hidden: number;
+  time_to_beat_main_seconds: number | null;
+  time_to_beat_completionist_seconds: number | null;
 }
 
 export type ListWithGames = List & { games: ListGame[] };

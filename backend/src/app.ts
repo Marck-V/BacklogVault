@@ -26,6 +26,7 @@ interface IgdbTimeToBeat {
   completely?: number;
 }
 import { gameAchievements, forgetAchievements } from "./steamAchievements.ts";
+import { backfillTimeToBeat } from "./timeToBeat.ts";
 import { refreshPlaytime } from "./steamRefresh.ts";
 import { SteamError } from "./steam.ts";
 import db from "./db.ts";
@@ -148,11 +149,15 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
     // 0 matches no user (ids start at 1), so visitors without a session get the empty totals.
     const userId = req.user?.id ?? 0;
 
+    // One row per game even if it sits in several lists, with the estimate saved when the game was added.
+    interface EstimateRow { igdb_id: number; main: number | null; completionist: number | null; checked: number }
     const rows = db
-      .prepare<[number], { igdb_id: number }>(
-        `SELECT DISTINCT lg.igdb_id
+      .prepare<[number], EstimateRow>(
+        `SELECT lg.igdb_id, MAX(lg.time_to_beat_main_seconds) AS main, MAX(lg.time_to_beat_completionist_seconds) AS completionist,
+                MAX(lg.time_to_beat_checked_at IS NOT NULL) AS checked
          FROM list_games lg JOIN lists l ON l.id = lg.list_id
-         WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status IN ('Backlog', 'Playing')`
+         WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status IN ('Backlog', 'Playing')
+         GROUP BY lg.igdb_id`
       )
       .all(userId);
     const uniqueIds = rows.map((r) => r.igdb_id);
@@ -192,23 +197,33 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
       } satisfies TimeToBeatStats);
     }
 
-    let timesToBeat: IgdbTimeToBeat[];
-    try {
-      timesToBeat = await igdbRequest<IgdbTimeToBeat[]>(
-        "game_time_to_beats",
-        `fields game_id,normally,completely; where game_id = (${uniqueIds.join(",")}); limit 500;`
-      );
-    } catch (err) {
-      // IGDB is only needed for the hour totals, so the counts from our own database still go out.
-      console.error(err);
-      return res.json({
-        game_count: uniqueIds.length,
-        completed_count,
-        total_hours_played,
-        total_main_story_seconds: null,
-        total_completionist_seconds: null,
-        igdb_unavailable: true,
-      } satisfies TimeToBeatStats);
+    // Games saved before the estimate was kept (or while IGDB was down) are looked up once now; after that IGDB is not needed.
+    const unchecked = rows.filter((r) => !r.checked).map((r) => r.igdb_id);
+    let estimates = rows;
+    if (unchecked.length > 0) {
+      try {
+        await backfillTimeToBeat(unchecked);
+        estimates = db
+          .prepare<[number], EstimateRow>(
+            `SELECT lg.igdb_id, MAX(lg.time_to_beat_main_seconds) AS main, MAX(lg.time_to_beat_completionist_seconds) AS completionist,
+                    1 AS checked
+             FROM list_games lg JOIN lists l ON l.id = lg.list_id
+             WHERE l.user_id = ? AND lg.hidden = 0 AND lg.status IN ('Backlog', 'Playing')
+             GROUP BY lg.igdb_id`
+          )
+          .all(userId);
+      } catch (err) {
+        // IGDB is only needed for the hour totals, so the counts from our own database still go out.
+        console.error(err);
+        return res.json({
+          game_count: uniqueIds.length,
+          completed_count,
+          total_hours_played,
+          total_main_story_seconds: null,
+          total_completionist_seconds: null,
+          igdb_unavailable: true,
+        } satisfies TimeToBeatStats);
+      }
     }
 
     const totals = { total_main_story_seconds: 0, total_completionist_seconds: 0 };
@@ -228,8 +243,9 @@ app.get("/api/stats/time-to-beat", igdbLimiter, async (req, res) => {
     let withEstimate = 0;
     let gamesLeftOut = 0;
     const overLimit: OverLimitGame[] = [];
-    for (const t of timesToBeat) {
-      if (typeof t.game_id !== "number" || (!t.normally && !t.completely)) continue;
+    for (const e of estimates) {
+      const t = { game_id: e.igdb_id, normally: e.main ?? undefined, completely: e.completionist ?? undefined };
+      if (!t.normally && !t.completely) continue;
       withEstimate += 1;
       if ((t.normally ?? 0) > MAX_MAIN_STORY_HOURS * 3600 || (t.completely ?? 0) > MAX_COMPLETIONIST_HOURS * 3600) {
         const isIncluded = included.has(t.game_id);

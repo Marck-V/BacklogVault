@@ -94,12 +94,14 @@ describe("hidden games are left out of the dashboard numbers", () => {
 
     const before = (await client.get("/api/stats/time-to-beat")).body;
     expect(before).toMatchObject({ game_count: 2, completed_count: 1, total_hours_played: 10, total_main_story_seconds: 72000 });
+    expect(vi.mocked(igdbRequest)).toHaveBeenCalledTimes(1);
 
     await hide(games[0]);
     await hide(games[1]);
     const after = (await client.get("/api/stats/time-to-beat")).body;
     expect(after).toMatchObject({ game_count: 1, completed_count: 0, total_hours_played: 0, total_main_story_seconds: 36000 });
-    expect(vi.mocked(igdbRequest).mock.calls.at(-1)?.[1]).not.toMatch(/\b1\b.*\b3\b|\(1,|,1,|,1\)/);
+    // The estimates were saved on the first load, so hiding games needs no further IGDB request.
+    expect(vi.mocked(igdbRequest)).toHaveBeenCalledTimes(1);
 
     await hide(games[0], false);
     expect((await client.get("/api/stats/time-to-beat")).body.total_hours_played).toBe(10);

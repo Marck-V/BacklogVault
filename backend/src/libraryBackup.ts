@@ -3,7 +3,8 @@ import { LIMITS } from "./limits.ts";
 import type { CountRow, GameStatus, ListGameRow, ListRow } from "./types.ts";
 
 // One game as it appears in a backup file.
-export type BackupGame = Omit<ListGameRow, "id" | "list_id">;
+// The time-to-beat snapshot is not backed up: it is IGDB data, and a restored game simply has none.
+export type BackupGame = Omit<ListGameRow, "id" | "list_id" | "time_to_beat_main_seconds" | "time_to_beat_completionist_seconds">;
 
 export interface BackupFile {
   app: string;

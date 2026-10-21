@@ -14,6 +14,7 @@ export default defineConfig({
       RESTORE_RATE_LIMIT: "100000",
       ENABLE_ACCOUNTS: "true",
     },
+    setupFiles: ["test/setup.ts"],
     include: ["test/**/*.test.ts"],
   },
 });

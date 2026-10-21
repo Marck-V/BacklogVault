@@ -6,6 +6,7 @@ import { ensureUser } from "./auth.ts";
 import { LIMITS } from "./limits.ts";
 import { findOwnedList } from "./ownership.ts";
 import { createGuestLimiter } from "./writeLimiters.ts";
+import { fetchTimeToBeat } from "./timeToBeat.ts";
 
 const router = express.Router();
 
@@ -55,7 +56,7 @@ router.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-router.post("/:id/games", (req, res) => {
+router.post("/:id/games", async (req, res) => {
   const { igdb_id, cover_url } = req.body ?? {};
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   if (!Number.isInteger(igdb_id) || igdb_id <= 0 || !name) {
@@ -78,12 +79,18 @@ router.post("/:id/games", (req, res) => {
     return res.status(409).json({ error: `A list can hold at most ${LIMITS.gamesPerList} games` });
   }
 
+  const ttb = await fetchTimeToBeat(igdb_id);
   try {
     const result = db
       .prepare(
-        "INSERT INTO list_games (list_id, igdb_id, name, cover_url, status) VALUES (?, ?, ?, ?, 'Backlog')"
+        `INSERT INTO list_games
+           (list_id, igdb_id, name, cover_url, status, time_to_beat_main_seconds, time_to_beat_completionist_seconds, time_to_beat_checked_at)
+         VALUES (?, ?, ?, ?, 'Backlog', ?, ?, ?)`
       )
-      .run(list.id, igdb_id, name, cover_url || null);
+      .run(
+        list.id, igdb_id, name, cover_url || null,
+        ttb?.main_seconds ?? null, ttb?.completionist_seconds ?? null, ttb ? new Date().toISOString() : null
+      );
     const game = db.prepare<[number | bigint], ListGameRow>("SELECT * FROM list_games WHERE id = ?").get(result.lastInsertRowid);
     res.status(201).json(game);
   } catch (err) {

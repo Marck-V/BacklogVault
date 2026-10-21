@@ -74,6 +74,18 @@ if (!listGamesColumns.includes("hidden")) {
   db.exec("ALTER TABLE list_games ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
 }
 
+if (!listGamesColumns.includes("time_to_beat_main_seconds")) {
+  // IGDB's estimate as it was when the game was added (null when IGDB had none or could not be reached).
+  db.exec("ALTER TABLE list_games ADD COLUMN time_to_beat_main_seconds INTEGER");
+}
+if (!listGamesColumns.includes("time_to_beat_completionist_seconds")) {
+  db.exec("ALTER TABLE list_games ADD COLUMN time_to_beat_completionist_seconds INTEGER");
+}
+if (!listGamesColumns.includes("time_to_beat_checked_at")) {
+  // Set once IGDB has been asked, even when it had no estimate, so an empty snapshot is told apart from one never fetched.
+  db.exec("ALTER TABLE list_games ADD COLUMN time_to_beat_checked_at TEXT");
+}
+
 const usersColumns = columnsOf("users");
 if (!usersColumns.includes("steam_id")) {
   db.exec("ALTER TABLE users ADD COLUMN steam_id TEXT");
