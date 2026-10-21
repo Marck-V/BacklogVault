@@ -95,9 +95,13 @@ export interface GameDetails {
 
 export type HoursRefresh = { status: "ok"; updated: number } | { status: "recent" } | { status: "error"; message: string };
 
+// How many games got a different time-to-beat estimate from IGDB, or why none were checked.
+export type TimeToBeatRefresh = { status: "ok"; updated: number } | { status: "error" };
+
 export interface RefreshResult {
   currently_playing: CurrentlyPlaying;
   hours: HoursRefresh;
+  time_to_beat?: TimeToBeatRefresh;
 }
 
 // ---- Lists and games

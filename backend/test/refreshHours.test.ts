@@ -233,3 +233,43 @@ describe("POST /api/steam/refresh: hours", () => {
     expect(await gameAchievements(userId, 10)).toMatchObject({ unlocked: 4 }); // fresh after Refresh
   });
 });
+
+describe("refresh also re-reads time to beat", () => {
+  const ttbOf = (igdbId) => dbGet("SELECT time_to_beat_main_seconds AS m, time_to_beat_completionist_seconds AS c FROM list_games WHERE igdb_id = ?", igdbId);
+
+  it("saves IGDB's new estimates and says how many games changed", async () => {
+    await addGame(client, list.id, { igdb_id: 1, name: "A" });
+    await addGame(client, list.id, { igdb_id: 2, name: "B" });
+    db.prepare("UPDATE list_games SET time_to_beat_main_seconds = 3600, time_to_beat_completionist_seconds = 7200, time_to_beat_checked_at = 'x' WHERE igdb_id = 1").run();
+    stubSteam([]);
+    vi.mocked(igdbRequest).mockImplementation(async (endpoint) =>
+      endpoint === "game_time_to_beats" ? [{ game_id: 1, normally: 3600, completely: 9000 }, { game_id: 2, normally: 1800 }] : []
+    );
+
+    const res = await refresh();
+    expect(res.body.time_to_beat).toEqual({ status: "ok", updated: 2 });
+    expect(ttbOf(1)).toEqual({ m: 3600, c: 9000 });
+    expect(ttbOf(2)).toEqual({ m: 1800, c: null });
+  });
+
+  it("keeps a saved estimate when IGDB no longer has one, and when IGDB fails", async () => {
+    await addGame(client, list.id, { igdb_id: 1, name: "A" });
+    db.prepare("UPDATE list_games SET time_to_beat_main_seconds = 3600, time_to_beat_checked_at = 'x'").run();
+    stubSteam([]);
+    vi.mocked(igdbRequest).mockResolvedValue([]);
+    expect((await refresh()).body.time_to_beat).toEqual({ status: "ok", updated: 0 });
+    expect(ttbOf(1).m).toBe(3600);
+
+    vi.mocked(igdbRequest).mockRejectedValue(new Error("down"));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60 * 1000); // past the refresh cooldown
+      const res = await refresh();
+      expect(res.status).toBe(200);
+      expect(res.body.time_to_beat).toEqual({ status: "error" });
+      expect(ttbOf(1).m).toBe(3600);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

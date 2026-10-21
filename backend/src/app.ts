@@ -17,7 +17,7 @@ import importRouter from "./importRoutes.ts";
 import steamLinkRouter from "./steamLinkRoutes.ts";
 import libraryRouter from "./libraryRoutes.ts";
 import { DETAIL_FIELDS, ageRatings, audioLanguages, storeLinks, type IgdbGame } from "./gameDetails.ts";
-import type { GameDetails, HoursRefresh, OverLimitGame, RefreshResult, TimeToBeatStats } from "../../shared/api.ts";
+import type { GameDetails, HoursRefresh, OverLimitGame, RefreshResult, TimeToBeatRefresh, TimeToBeatStats } from "../../shared/api.ts";
 
 // IGDB's time-to-beat answer: seconds for the main story (normally) and for 100% (completely), either may be missing.
 interface IgdbTimeToBeat {
@@ -368,7 +368,22 @@ app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
         };
       }
     }
-    const result: RefreshResult = { currently_playing, hours };
+    // The time-to-beat estimates saved for the user's games are re-read from IGDB too, so the dashboard totals follow
+    // IGDB's changes. Also best effort: a failure leaves the saved estimates as they were.
+    let time_to_beat: TimeToBeatRefresh;
+    try {
+      const ids = db
+        .prepare<[number], { igdb_id: number }>(
+          "SELECT DISTINCT lg.igdb_id FROM list_games lg JOIN lists l ON l.id = lg.list_id WHERE l.user_id = ?"
+        )
+        .all(req.user.id)
+        .map((r) => r.igdb_id);
+      time_to_beat = { status: "ok", updated: ids.length ? await backfillTimeToBeat(ids, { keepExisting: true }) : 0 };
+    } catch (err) {
+      console.error(err);
+      time_to_beat = { status: "error" };
+    }
+    const result: RefreshResult = { currently_playing, hours, time_to_beat };
     res.json(result);
   } catch (err) {
     console.error(err);

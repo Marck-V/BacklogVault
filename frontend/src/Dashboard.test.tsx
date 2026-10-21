@@ -290,6 +290,13 @@ describe('Dashboard', () => {
         expect(vi.mocked(getTimeToBeatStats)).toHaveBeenCalledTimes(1)
       })
 
+      it('reads the totals again and says so when time-to-beat estimates changed', async () => {
+        vi.mocked(refreshFromSteam).mockResolvedValue({ ...withHours({ status: 'ok', updated: 0 }), time_to_beat: { status: 'ok', updated: 3 } })
+        await pressRefresh()
+        expect(await screen.findByText('Updated from Steam. Hours were already up to date. 3 games have a new time to beat.')).toBeTruthy()
+        expect(vi.mocked(getTimeToBeatStats).mock.calls.length).toBeGreaterThanOrEqual(2)
+      })
+
       it('says when hours were checked recently', async () => {
         vi.mocked(refreshFromSteam).mockResolvedValue(withHours({ status: 'recent' }))
         await pressRefresh()

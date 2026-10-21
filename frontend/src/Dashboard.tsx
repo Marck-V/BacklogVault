@@ -9,6 +9,7 @@ import type {
   BreakdownResponse,
   CurrentlyPlaying,
   HoursRefresh,
+  TimeToBeatRefresh,
   OverLimitGame,
   TimeToBeatStats,
 } from '../../shared/api.ts'
@@ -210,7 +211,12 @@ function PlayingPanel({ playing }: { playing: CurrentlyPlaying }) {
   )
 }
 
-function refreshSummary(hours: HoursRefresh | undefined): Notice {
+function refreshSummary(hours: HoursRefresh | undefined, timeToBeat?: TimeToBeatRefresh): Notice {
+  if (timeToBeat?.status === 'ok' && timeToBeat.updated > 0 && hours?.status !== 'error') {
+    const estimates = `${timeToBeat.updated} ${timeToBeat.updated === 1 ? 'game has' : 'games have'} a new time to beat.`
+    const base = refreshSummary(hours)
+    return { text: `${base.text} ${estimates}` }
+  }
   if (hours?.status === 'ok') {
     return {
       text:
@@ -266,9 +272,11 @@ export default function Dashboard() {
       if (result.currently_playing.steam_failed) {
         setRefreshMessage({ error: true, text: "Steam isn't responding right now, so nothing was updated." })
       } else {
-        setRefreshMessage(refreshSummary(result.hours))
-        // New hours change the totals on this page, so read them again.
-        if (result.hours?.status === 'ok' && result.hours.updated > 0) {
+        setRefreshMessage(refreshSummary(result.hours, result.time_to_beat))
+        // New hours or new time-to-beat estimates change the totals on this page, so read them again.
+        const hoursChanged = result.hours?.status === 'ok' && result.hours.updated > 0
+        const estimatesChanged = result.time_to_beat?.status === 'ok' && result.time_to_beat.updated > 0
+        if (hoursChanged || estimatesChanged) {
           getTimeToBeatStats()
             .then(setStats)
             .catch(() => {})
