@@ -37,7 +37,7 @@ you can download a backup of it at any time.
 | **External APIs** | IGDB (game data, through Twitch OAuth), Steam Web API and Steam OpenID sign-in |
 | **Packaging** | One multi-stage Docker image that builds the React app and the API together and runs as an unprivileged user |
 | **Hosting** | Railway, deployed from this repository on every push to `main`, with HTTPS and a persistent volume for the database |
-| **Tests** | 712 automated tests: Vitest and Supertest for the API (490), Vitest and Testing Library for the website (222) |
+| **Tests** | 733 automated tests: Vitest and Supertest for the API (509), Vitest and Testing Library for the website (224) |
 | **CI** | GitHub Actions on every push: type checks, linting, both test suites, the production build, and a smoke test that starts the real Docker container and checks that two visitors cannot see each other's data |
 
 ```
@@ -65,73 +65,6 @@ sees an API key.
   and confirmation from Steam itself before an account is trusted. Steam data is only read for the person who
   connected, and only when they ask, as Steam's API terms require.
 
-## Run it yourself
-
-You need an IGDB client ID and secret: create an application in the
-[Twitch developer console](https://dev.twitch.tv/console).
-
-### With Docker
-
-Create a file named `.env` in the repository root:
-
-```bash
-IGDB_CLIENT_ID=your-client-id
-IGDB_CLIENT_SECRET=your-client-secret
-# Optional: a Steam Web API key (https://steamcommunity.com/dev/apikey) turns on Connect Steam
-STEAM_API_KEY=
-```
-
-Then:
-
-```bash
-docker compose up --build
-```
-
-and open http://localhost:8080.
-
-### Without Docker
-
-```bash
-# The API, on http://localhost:4000 (put the same three variables in backend/.env)
-cd backend && npm install && npm run dev
-
-# The website, on http://localhost:5173
-cd frontend && npm install && npm run dev
-```
-
-### Tests and checks
-
-```bash
-cd backend && npm run typecheck && npm test
-cd frontend && npm run typecheck && npm run lint && npm test
-```
-
-IGDB and Steam are mocked in every test, so the suites run offline with no credentials.
-
-### Configuration
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET` | required | Twitch credentials for IGDB |
-| `STEAM_API_KEY` | empty (Steam features off) | Steam Web API key. Keep it on the server only |
-| `PUBLIC_URL`, `APP_URL` | localhost addresses | Where Steam sends people back after sign-in, and where they land on the website. Set both to the real address when deployed |
-| `DATA_COUNTRY`, `CONTACT_EMAIL` | empty | Shown on the privacy page (they are built into the website, so they must be set when it is built) |
-| `CLIENT_IP_HEADER` | empty | A header the host's proxy uses for the visitor's real address (Railway: `X-Real-IP`). Every per-visitor rate limit depends on it |
-| `TRUST_PROXY` | `0` | Number of proxies in front of the app that append to `X-Forwarded-For`. Ignored when `CLIENT_IP_HEADER` is set |
-| `COOKIE_SECURE` | `false` | Set to `true` when the site is served over HTTPS |
-| `ENABLE_ACCOUNTS` | `false` | Email and password accounts. Off: the site is guests-only for now, with managed sign-in planned |
-| `CORS_ORIGIN` | the Vite address in development, none in production | Other origins allowed to call the API with cookies |
-| `DB_PATH`, `PORT` | `backend/backlog.db`, `4000` | Where the SQLite file lives, and the API's port |
-| `STEAM_DAILY_CALL_LIMIT` | `90000` | Site-wide cap on Steam Web API calls per day (Steam allows 100,000) |
-| `*_RATE_LIMIT` | sensible defaults | Per-visitor limits on searches, changes, new sessions, Steam imports and restores |
-
-### Deploying
-
-The repository deploys to [Railway](https://railway.com) as it is: Railway builds the root `Dockerfile` and runs it as one
-container. Attach a volume at `/data` (the database lives there), set the variables above (on Railway:
-`CLIENT_IP_HEADER=X-Real-IP` and `COOKIE_SECURE=true`), and use `/api/health` as the health check path. Every push to
-`main` then redeploys.
-
 ## Project layout
 
 ```
@@ -155,6 +88,10 @@ docker-compose.yml  Runs that image locally with a data volume
   API.
 
 ---
+
+Open-source licenses for the packages the website bundles are in
+[third-party-licenses.txt](https://backlogvault.up.railway.app/third-party-licenses.txt), also linked from the site's
+footer.
 
 Game data and cover art are provided by [IGDB.com](https://www.igdb.com). BacklogVault is not affiliated with or endorsed
 by Valve or [Steam](https://store.steampowered.com). Steam and the Steam logo are trademarks of Valve Corporation.

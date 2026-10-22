@@ -53,6 +53,11 @@ function App() {
             </a>
             . Steam and the Steam logo are trademarks of Valve Corporation. <Link to="/privacy">Privacy and Steam data</Link>
           </p>
+          <p>
+            <a href="/third-party-licenses.txt" target="_blank" rel="noopener noreferrer">
+              Open-source licenses
+            </a>
+          </p>
         </footer>
       </div>
     </AuthProvider>
