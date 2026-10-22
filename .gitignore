@@ -25,3 +25,7 @@ coverage/
 .claude/settings.local.json
 .vitest/
 *.bak*
+
+# Private notes kept only on this computer
+PROJECT_METRICS.md
+SECURITY_AUDIT.md

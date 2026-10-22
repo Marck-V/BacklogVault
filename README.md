@@ -64,11 +64,6 @@ sees an API key.
 - **Steam sign-in done properly.** OpenID 2.0 with a one-time code tied to the visitor, an exact return-address check,
   and confirmation from Steam itself before an account is trusted. Steam data is only read for the person who
   connected, and only when they ask, as Steam's API terms require.
-- **Security review.** A full audit of the codebase and the live deployment is in [SECURITY_AUDIT.md](SECURITY_AUDIT.md),
-  including a rate-limit bypass found on the live site and fixed (the host's proxy passed visitors' own
-  `X-Forwarded-For` headers through, so the app now reads the address the proxy itself reports).
-- **Measured, not guessed.** [PROJECT_METRICS.md](PROJECT_METRICS.md) is the build log: what changed, what was measured
-  before and after, and what was not verified.
 
 ## Run it yourself
 
