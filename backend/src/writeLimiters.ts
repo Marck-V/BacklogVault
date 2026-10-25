@@ -1,5 +1,6 @@
 import rateLimit from "express-rate-limit";
 import type { Request } from "express";
+import { createVisitorLimiter } from "./visitorLimits.ts";
 
 interface LimiterOptions {
   windowMs: number;
@@ -12,12 +13,17 @@ function limiter({ windowMs, limit, message, skip }: LimiterOptions) {
   return rateLimit({ windowMs, limit, standardHeaders: "draft-7", legacyHeaders: false, message: { error: message }, skip });
 }
 
-// Per-IP cap on changes (create, edit, delete). Reads are not counted.
-export function createWriteLimiter(limit = Number(process.env.WRITE_RATE_LIMIT ?? 120)) {
-  return limiter({
+// Cap on changes (create, edit, delete). Reads are not counted. Counted per visitor with a session, plus a larger
+// ceiling for everyone behind one address (see visitorLimits.ts).
+export function createWriteLimiter(
+  limit = Number(process.env.WRITE_RATE_LIMIT ?? 120),
+  addressLimit = Number(process.env.WRITE_ADDRESS_RATE_LIMIT ?? limit * 5)
+) {
+  return createVisitorLimiter({
     windowMs: 60 * 1000,
     limit,
-    message: "Too many changes in a short time. Please slow down.",
+    addressLimit,
+    message: { error: "Too many changes in a short time. Please slow down." },
     skip: (req: Request) => ["GET", "HEAD", "OPTIONS"].includes(req.method),
   });
 }

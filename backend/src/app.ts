@@ -5,6 +5,7 @@ import helmet from "helmet";
 import compression from "compression";
 import { igdbRequest } from "./igdbClient.ts";
 import { escapeIgdbString } from "./igdbQuery.ts";
+import { cachedSearch, rememberSearch } from "./searchCache.ts";
 import { createIgdbLimiter } from "./igdbLimiter.ts";
 import { trustProxyHops, clientIpHeader } from "./config.ts";
 import { useClientIpHeader } from "./clientIp.ts";
@@ -85,8 +86,11 @@ app.get("/api/games/search", async (req, res) => {
   }
 
   try {
+    const cached = cachedSearch(search);
+    if (cached !== undefined) return res.json(cached);
     const query = `search "${escapeIgdbString(search)}"; fields name,cover.url,first_release_date,summary,rating; limit 20;`;
     const games = await igdbRequest("games", query);
+    rememberSearch(search, games);
     res.json(games);
   } catch (err) {
     console.error(err);
