@@ -97,6 +97,7 @@ export async function currentlyPlaying(userId: number, { force = false }: { forc
         name: match.name,
         cover_url: match.coverUrl,
         hours_last_two_weeks: Math.round(game.minutes / 6) / 10,
+        minutes_last_two_weeks: game.minutes,
       });
     }
   } catch (err) {

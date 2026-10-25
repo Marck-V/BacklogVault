@@ -5,7 +5,8 @@ import { join } from 'node:path'
 // jsdom does not lay anything out, so these cannot measure a real page. They guard the specific rules that stop the
 // page growing wider than a phone screen, which were verified in a real browser, against being deleted by accident.
 // Tests run from the frontend folder, locally and in CI.
-const css = readFileSync(join(process.cwd(), 'src', 'App.css'), 'utf8')
+// Windows checkouts can turn line endings into CRLF, and the patterns below match on plain \n, so normalise first.
+const css = readFileSync(join(process.cwd(), 'src', 'App.css'), 'utf8').replace(/\r\n/g, '\n')
 
 // The body of the first rule whose selector is exactly `selector` (outside media queries).
 function rule(selector) {

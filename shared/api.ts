@@ -14,6 +14,8 @@ export interface PlayingGame {
   added_at?: string;
   // Set for games from Steam's "played in the last two weeks".
   hours_last_two_weeks?: number;
+  // The same playtime in whole minutes, so a game played for less than an hour can say how many minutes.
+  minutes_last_two_weeks?: number;
 }
 
 export interface CurrentlyPlaying {

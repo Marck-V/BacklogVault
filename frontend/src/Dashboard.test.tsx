@@ -210,6 +210,78 @@ describe('Dashboard', () => {
     expect(screen.getByText('12.5 h in 2 weeks')).toBeTruthy()
   })
 
+  describe('long lists of recently played games', () => {
+    const steamGames = (count: number) => ({
+      source: 'steam' as const,
+      steam_linked: true,
+      steam_failed: false,
+      games: Array.from({ length: count }, (_, i) => ({ igdb_id: i + 1, name: `Game ${i + 1}`, cover_url: null, hours_last_two_weeks: 1 })),
+    })
+
+    it('shows 6 games and folds the rest behind a button', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamGames(9))
+      render(<Dashboard />)
+
+      expect(await screen.findByText('Game 6')).toBeTruthy()
+      expect(screen.queryByText('Game 7')).toBeNull()
+      const more = screen.getByRole('button', { name: 'Show 3 more' })
+      expect(more.getAttribute('aria-expanded')).toBe('false')
+
+      fireEvent.click(more)
+      expect(screen.getByText('Game 9')).toBeTruthy()
+      const fewer = screen.getByRole('button', { name: 'Show fewer' })
+      expect(fewer.getAttribute('aria-expanded')).toBe('true')
+
+      fireEvent.click(fewer)
+      expect(screen.queryByText('Game 7')).toBeNull()
+    })
+
+    it('has no button when there are 6 games or fewer', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getCurrentlyPlaying).mockResolvedValue(steamGames(6))
+      render(<Dashboard />)
+
+      expect(await screen.findByText('Game 6')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /Show .* more|Show fewer/ })).toBeNull()
+    })
+  })
+
+  it('shows minutes instead of hours for a game played less than an hour', async () => {
+    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+    vi.mocked(getCurrentlyPlaying).mockResolvedValue({
+      source: 'steam',
+      steam_linked: true,
+      steam_failed: false,
+      games: [
+        { igdb_id: 1, name: 'Hades', cover_url: null, hours_last_two_weeks: 0.3, minutes_last_two_weeks: 20 },
+        { igdb_id: 2, name: 'Celeste', cover_url: null, hours_last_two_weeks: 1, minutes_last_two_weeks: 60 },
+        { igdb_id: 3, name: 'Hollow Knight', cover_url: null, hours_last_two_weeks: 1, minutes_last_two_weeks: 59 },
+        { igdb_id: 4, name: 'Brief', cover_url: null, hours_last_two_weeks: 0, minutes_last_two_weeks: 1 },
+        { igdb_id: 5, name: 'Untouched', cover_url: null, hours_last_two_weeks: 0, minutes_last_two_weeks: 0 },
+      ],
+    })
+    render(<Dashboard />)
+
+    expect(await screen.findByText('20 min in 2 weeks')).toBeTruthy()
+    expect(screen.getByText('59 min in 2 weeks')).toBeTruthy()
+    expect(screen.getByText('1 min in 2 weeks')).toBeTruthy()
+    expect(screen.getByText('1 h in 2 weeks')).toBeTruthy()
+    expect(screen.getAllByText(/in 2 weeks/)).toHaveLength(4)
+  })
+
+  it('works out minutes from hours when the server sends only hours', async () => {
+    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+    vi.mocked(getCurrentlyPlaying).mockResolvedValue({
+      source: 'steam',
+      steam_linked: true,
+      steam_failed: false,
+      games: [{ igdb_id: 1, name: 'Hades', cover_url: null, hours_last_two_weeks: 0.5 }],
+    })
+    render(<Dashboard />)
+    expect(await screen.findByText('30 min in 2 weeks')).toBeTruthy()
+  })
+
   it('shows hand-picked Playing games under Currently playing, without hours', async () => {
     vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
     vi.mocked(getCurrentlyPlaying).mockResolvedValue({

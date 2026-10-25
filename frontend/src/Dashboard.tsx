@@ -11,6 +11,7 @@ import type {
   HoursRefresh,
   TimeToBeatRefresh,
   OverLimitGame,
+  PlayingGame,
   TimeToBeatStats,
 } from '../../shared/api.ts'
 
@@ -173,8 +174,14 @@ function BreakdownPanel({ breakdown }: { breakdown: BreakdownResponse | null }) 
   )
 }
 
+// More games than this fold into a "Show more" toggle, so the panel does not keep growing taller than its neighbour.
+const PLAYING_VISIBLE = 6
+
 function PlayingPanel({ playing }: { playing: CurrentlyPlaying }) {
   const fromSteam = playing.source === 'steam'
+  const [expanded, setExpanded] = useState(false)
+  const hidden = Math.max(playing.games.length - PLAYING_VISIBLE, 0)
+  const shown = expanded ? playing.games : playing.games.slice(0, PLAYING_VISIBLE)
   return (
     <section className="panel" aria-labelledby="playing-title">
       <h3 className="panel-title" id="playing-title">
@@ -187,8 +194,8 @@ function PlayingPanel({ playing }: { playing: CurrentlyPlaying }) {
           in the last two weeks, or set a game&apos;s status to Playing.
         </p>
       ) : (
-        <div className="currently-playing-covers">
-          {playing.games.map((game) => (
+        <div className="currently-playing-covers" id="playing-games">
+          {shown.map((game) => (
             <div key={game.igdb_id} className="currently-playing-item">
               {game.cover_url ? (
                 <img src={game.cover_url} alt={game.name} width="104" height="139" loading="lazy" decoding="async" />
@@ -200,15 +207,32 @@ function PlayingPanel({ playing }: { playing: CurrentlyPlaying }) {
               <span className="currently-playing-name" translate="no">
                 {game.name}
               </span>
-              {fromSteam && game.hours_last_two_weeks != null && game.hours_last_two_weeks > 0 && (
-                <span className="currently-playing-hours">{`${game.hours_last_two_weeks.toLocaleString()}\u00a0h in 2 weeks`}</span>
-              )}
+              {fromSteam && playedLabel(game) && <span className="currently-playing-hours">{playedLabel(game)}</span>}
             </div>
           ))}
         </div>
       )}
+      {hidden > 0 && (
+        <button
+          type="button"
+          className="link-button currently-playing-more"
+          aria-expanded={expanded}
+          aria-controls="playing-games"
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? 'Show fewer' : `Show ${hidden} more`}
+        </button>
+      )}
     </section>
   )
+}
+
+// Playtime of a recently played game: whole minutes when it is under an hour, otherwise hours. Null when there is none.
+function playedLabel(game: PlayingGame): string | null {
+  const minutes = game.minutes_last_two_weeks ?? Math.round((game.hours_last_two_weeks ?? 0) * 60)
+  if (minutes <= 0) return null
+  if (minutes < 60) return `${minutes} min in 2 weeks`
+  return `${(game.hours_last_two_weeks ?? Math.round(minutes / 6) / 10).toLocaleString()} h in 2 weeks`
 }
 
 function refreshSummary(hours: HoursRefresh | undefined, timeToBeat?: TimeToBeatRefresh): Notice {

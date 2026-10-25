@@ -110,12 +110,13 @@ describe("GET /api/stats/currently-playing from Steam", () => {
     const res = await client.get("/api/stats/currently-playing");
     expect(res.body).toMatchObject({ source: "steam", steam_linked: true, steam_failed: false });
     expect(res.body.games).toEqual([
-      { igdb_id: 233, name: "Half-Life 2", cover_url: null, hours_last_two_weeks: 10 },
+      { igdb_id: 233, name: "Half-Life 2", cover_url: null, hours_last_two_weeks: 10, minutes_last_two_weeks: 600 },
       {
         igdb_id: 2963,
         name: "Dota 2",
         cover_url: "https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg",
         hours_last_two_weeks: 1.5,
+        minutes_last_two_weeks: 90,
       },
     ]);
     expect(steamCalls[0].pathname).toBe("/IPlayerService/GetRecentlyPlayedGames/v1/");

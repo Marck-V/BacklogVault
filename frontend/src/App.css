@@ -522,6 +522,11 @@ button:disabled {
   gap: 1.1rem 1rem;
 }
 
+.currently-playing-more {
+  display: block;
+  margin: 1rem auto 0;
+}
+
 .currently-playing-item {
   min-width: 0;
   text-align: center;
