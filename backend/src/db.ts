@@ -123,6 +123,45 @@ db.exec(`
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at TEXT NOT NULL
   );
+
+  -- IGDB genres, themes and game modes per game (JSON arrays of names), kept so the library breakdown still draws when
+  -- IGDB cannot be reached. Public game data, shared by everyone, with nothing about any user.
+  CREATE TABLE IF NOT EXISTS game_metadata (
+    igdb_id INTEGER PRIMARY KEY,
+    genres TEXT NOT NULL,
+    themes TEXT NOT NULL,
+    modes TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+  );
+
+  -- When a user's Steam "recently played" list was last read, and from which Steam account.
+  CREATE TABLE IF NOT EXISTS steam_recent_state (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    steam_id TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+  );
+
+  -- That list itself, as last read. Shown (marked as old) when Steam or IGDB cannot answer. Removed with the Steam link.
+  CREATE TABLE IF NOT EXISTS steam_recent_games (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    igdb_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    cover_url TEXT,
+    minutes INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (user_id, igdb_id)
+  );
+
+  -- One row per user per day (UTC) with the library totals at that time, so trends can be drawn later. The past cannot
+  -- be rebuilt from the library, which only holds today's hours.
+  CREATE TABLE IF NOT EXISTS playtime_snapshots (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    total_hours REAL NOT NULL,
+    game_count INTEGER NOT NULL,
+    completed_count INTEGER NOT NULL,
+    PRIMARY KEY (user_id, day)
+  );
 `);
 
 db.prepare("UPDATE list_games SET status = 'Backlog' WHERE status = 'Not Playing'").run();

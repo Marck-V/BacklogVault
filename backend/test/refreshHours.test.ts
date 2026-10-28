@@ -6,7 +6,6 @@ vi.mock("../src/igdbClient.ts", () => ({ igdbRequest: vi.fn() }));
 import app from "../src/app.ts";
 import db from "../src/db.ts";
 import { igdbRequest } from "../src/igdbClient.ts";
-import { clearDashboardCaches } from "../src/dashboardData.ts";
 import { clearAchievementCache, gameAchievements } from "../src/steamAchievements.ts";
 import { resetDb, newClient, createList, addGame, type Client, dbGet } from "./helpers.ts";
 
@@ -50,7 +49,6 @@ const hoursCalls = () => steamCalls.filter((u) => u.pathname.includes("GetOwnedG
 
 beforeEach(async () => {
   resetDb();
-  clearDashboardCaches();
   clearAchievementCache();
   client = newClient(app);
   vi.mocked(igdbRequest).mockReset();

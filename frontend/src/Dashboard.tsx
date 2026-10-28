@@ -143,6 +143,9 @@ function BreakdownPanel({ breakdown }: { breakdown: BreakdownResponse | null }) 
         <p className="panel-footnote">
           A game can have several {view.several}, so it can count in more than one.
           {data && data.without > 0 && ` ${data.without.toLocaleString()} have ${view.without} on IGDB.`}
+          {breakdown && 'not_loaded' in breakdown && breakdown.not_loaded
+            ? ` IGDB isn't responding, so ${breakdown.not_loaded.toLocaleString()} newer ${breakdown.not_loaded === 1 ? 'game is' : 'games are'} left out for now.`
+            : ''}
         </p>
       </>
     )
@@ -222,6 +225,12 @@ function PlayingPanel({ playing }: { playing: CurrentlyPlaying }) {
         >
           {expanded ? 'Show fewer' : `Show ${hidden} more`}
         </button>
+      )}
+      {playing.stale_since && (
+        <p className="panel-footnote">
+          Steam isn&apos;t responding, so this is the list from{' '}
+          {new Date(playing.stale_since).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.
+        </p>
       )}
     </section>
   )

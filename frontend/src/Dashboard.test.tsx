@@ -186,6 +186,24 @@ describe('Dashboard', () => {
       expect(screen.getByText('Total hours played')).toBeTruthy()
     })
 
+    it('draws the saved chart and says how many newer games are left out while IGDB is down', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue({ ...BREAKDOWN, not_loaded: 2 })
+      render(<Dashboard />)
+
+      expect(await screen.findByText('RPG')).toBeTruthy()
+      expect(screen.getByText(/2 newer games are left out for now/)).toBeTruthy()
+    })
+
+    it('says nothing about left-out games when none are', async () => {
+      vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+      vi.mocked(getBreakdown).mockResolvedValue(BREAKDOWN)
+      render(<Dashboard />)
+
+      await screen.findByText('RPG')
+      expect(screen.queryByText(/left out for now/)).toBeNull()
+    })
+
     it('survives the request failing outright', async () => {
       vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
       vi.mocked(getBreakdown).mockRejectedValue(new Error('network'))
@@ -208,6 +226,35 @@ describe('Dashboard', () => {
 
     expect(await screen.findByText('Recently played on Steam')).toBeTruthy()
     expect(screen.getByText('12.5 h in 2 weeks')).toBeTruthy()
+  })
+
+  it('shows the last saved Steam list with a note about when it was read while Steam is down', async () => {
+    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+    vi.mocked(getCurrentlyPlaying).mockResolvedValue({
+      source: 'steam',
+      steam_linked: true,
+      steam_failed: true,
+      stale_since: '2026-10-20T10:00:00.000Z',
+      games: [{ igdb_id: 1, name: 'Dota 2', cover_url: null, hours_last_two_weeks: 12.5 }],
+    })
+    render(<Dashboard />)
+
+    expect(await screen.findByText('Dota 2')).toBeTruthy()
+    expect(screen.getByText(/Steam isn't responding, so this is the list from/)).toBeTruthy()
+  })
+
+  it('shows no old-list note when the Steam answer is current', async () => {
+    vi.mocked(getTimeToBeatStats).mockResolvedValue(BASE)
+    vi.mocked(getCurrentlyPlaying).mockResolvedValue({
+      source: 'steam',
+      steam_linked: true,
+      steam_failed: false,
+      games: [{ igdb_id: 1, name: 'Dota 2', cover_url: null, hours_last_two_weeks: 12.5 }],
+    })
+    render(<Dashboard />)
+
+    await screen.findByText('Dota 2')
+    expect(screen.queryByText(/isn't responding, so this is the list/)).toBeNull()
   })
 
   describe('long lists of recently played games', () => {

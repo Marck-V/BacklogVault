@@ -1,5 +1,6 @@
 import express from "express";
 import db from "./db.ts";
+import { recordPlaytimeSnapshot } from "./playtimeHistory.ts";
 import type { UserRow } from "./types.ts";
 import { asyncHandler } from "./asyncHandler.ts";
 import { findOwnedList } from "./ownership.ts";
@@ -46,6 +47,7 @@ router.post(
     try {
       const owned = await fetchOwnedGames(steamId, apiKey);
       const summary = await importOwnedGames({ list, owned });
+      recordPlaytimeSnapshot(req.user!.id);
       res.json({ steamId, ...summary });
     } catch (err) {
       if (!(err instanceof SteamError)) throw err;

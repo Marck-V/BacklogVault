@@ -6,7 +6,6 @@ vi.mock("../src/igdbClient.ts", () => ({ igdbRequest: vi.fn() }));
 import app from "../src/app.ts";
 import db from "../src/db.ts";
 import { igdbRequest } from "../src/igdbClient.ts";
-import { clearDashboardCaches } from "../src/dashboardData.ts";
 import { resetDb, newClient, createList, addGame, type Client } from "./helpers.ts";
 
 const KEY = "TESTKEY0123456789abcdef0123456789";
@@ -58,7 +57,6 @@ async function userWithSteam() {
 
 beforeEach(() => {
   resetDb();
-  clearDashboardCaches();
   client = newClient(app);
   vi.mocked(igdbRequest).mockReset();
   vi.stubEnv("STEAM_API_KEY", KEY);
@@ -373,5 +371,41 @@ describe("GET /api/stats/breakdown", () => {
     const res = await client.get("/api/stats/breakdown");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ igdb_unavailable: true, game_count: null });
+  });
+});
+
+// Nothing is held in memory any more, so these read as a restart: only what the database saved is left.
+describe("dashboard after a restart while IGDB and Steam are down", () => {
+  it("still draws the library breakdown from what was saved earlier", async () => {
+    const list = await createList(client);
+    await addGame(client, list.id, { igdb_id: 1, name: "One" });
+    await addGame(client, list.id, { igdb_id: 2, name: "Two" });
+    stubIgdb({ genres: { 1: ["RPG"], 2: ["RPG", "Strategy"] }, modes: { 1: ["Single player"] } });
+    await client.get("/api/stats/breakdown");
+
+      vi.mocked(igdbRequest).mockReset();
+    vi.mocked(igdbRequest).mockRejectedValue(new Error("IGDB is down"));
+
+    const res = await client.get("/api/stats/breakdown");
+    expect(res.body.game_count).toBe(2);
+    expect(res.body.genres.items).toEqual([
+      { name: "RPG", count: 2 },
+      { name: "Strategy", count: 1 },
+    ]);
+  });
+
+  it("keeps showing the last recently played list, marked as failed, when Steam stops answering", async () => {
+    await userWithSteam();
+    stubSteamRecent([{ appid: 570, name: "Dota 2", playtime_2weeks: 90, playtime_forever: 9000 }]);
+    stubIgdb({ catalogue: { 570: { id: 2963, name: "Dota 2" } } });
+    expect((await client.get("/api/stats/currently-playing")).body.games).toHaveLength(1);
+
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 503 })));
+    vi.mocked(igdbRequest).mockReset();
+    vi.mocked(igdbRequest).mockRejectedValue(new Error("IGDB is down"));
+
+    const res = await client.post("/api/steam/refresh");
+    expect(res.body.currently_playing).toMatchObject({ source: "steam", steam_failed: true });
+    expect(res.body.currently_playing.games.map((g) => g.igdb_id)).toEqual([2963]);
   });
 });

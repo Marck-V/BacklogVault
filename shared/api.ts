@@ -22,6 +22,8 @@ export interface CurrentlyPlaying {
   source: "steam" | "manual";
   steam_linked: boolean;
   steam_failed: boolean;
+  // Set when Steam could not be reached and `games` is the last list that was read, from this moment (ISO date).
+  stale_since?: string;
   games: PlayingGame[];
 }
 
@@ -37,9 +39,18 @@ export interface BreakdownCategory {
 
 export type BreakdownCategoryName = "genres" | "themes" | "modes";
 
-export type Breakdown = { game_count: number } & Record<BreakdownCategoryName, BreakdownCategory>;
+// `not_loaded` is how many games are left out because IGDB could not be reached and nothing was saved for them yet.
+export type Breakdown = { game_count: number; not_loaded?: number } & Record<BreakdownCategoryName, BreakdownCategory>;
 
 export type BreakdownResponse = Breakdown | { igdb_unavailable: true; game_count: null };
+
+// One day's library totals, saved so trends can be drawn.
+export interface PlaytimeSnapshot {
+  day: string;
+  total_hours: number;
+  game_count: number;
+  completed_count: number;
+}
 
 // ---- Steam achievements for one game
 

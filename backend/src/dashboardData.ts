@@ -13,29 +13,20 @@ import type {
 
 type CategoryNames = Record<BreakdownCategoryName, string[]>;
 
-const RECENT_CACHE_MS = 10 * 60 * 1000;
-const MAX_CACHE_ENTRIES = 5000;
+const RECENT_FRESH_MS = 10 * 60 * 1000;
+// Genres and the like almost never change, so a saved answer is trusted this long before IGDB is asked again.
+const METADATA_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const GENRE_QUERY_SIZE = 500;
 const TOP_GENRES = 7;
 
-// Small in-memory caches. They only save calls to Steam and IGDB; losing them (a restart) costs nothing.
-const recentCache = new Map<number, { at: number; steamId: string; games: PlayingGame[] }>();
-const genreCache = new Map<number, CategoryNames>(); // igdb id -> names per category
+// Everything below is kept in the database, so a restart loses nothing and Steam or IGDB being down only means the
+// last saved answer is shown (marked as old where the page can say so).
 
-function remember<K, V>(cache: Map<K, V>, key: K, value: V): void {
-  const oldest = cache.keys().next().value;
-  if (cache.size >= MAX_CACHE_ENTRIES && oldest !== undefined) cache.delete(oldest);
-  cache.set(key, value);
-}
-
-// Called when someone disconnects Steam, so nothing about their account lingers in memory.
+// Called when someone disconnects Steam, so nothing about their account lingers.
 export function forgetRecentlyPlayed(userId: number): void {
-  recentCache.delete(userId);
-}
-
-export function clearDashboardCaches() {
-  recentCache.clear();
-  genreCache.clear();
+  db.prepare("DELETE FROM steam_recent_games WHERE user_id = ?").run(userId);
+  db.prepare("DELETE FROM steam_recent_state WHERE user_id = ?").run(userId);
+  db.prepare("DELETE FROM playtime_snapshots WHERE user_id = ?").run(userId);
 }
 
 // Games the user hid in every list they are in. A game hidden in one list but still visible in another is not hidden.
@@ -77,9 +68,12 @@ export async function currentlyPlaying(userId: number, { force = false }: { forc
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey || !steamId) return manual();
 
-  const cached = recentCache.get(userId);
-  if (!force && cached && cached.steamId === steamId && Date.now() - cached.at < RECENT_CACHE_MS) {
-    return steamResult(userId, cached.games) ?? manual();
+  const saved = db
+    .prepare<[number], { steam_id: string; fetched_at: string }>("SELECT steam_id, fetched_at FROM steam_recent_state WHERE user_id = ?")
+    .get(userId);
+  const savedForThisAccount = saved?.steam_id === steamId ? saved : undefined;
+  if (!force && savedForThisAccount && Date.now() - Date.parse(savedForThisAccount.fetched_at) < RECENT_FRESH_MS) {
+    return steamResult(userId, savedRecent(userId)) ?? manual();
   }
 
   let games: PlayingGame[];
@@ -101,17 +95,50 @@ export async function currentlyPlaying(userId: number, { force = false }: { forc
       });
     }
   } catch (err) {
-    // Steam or IGDB is down. Log the kind of failure (never the request: Steam's URL carries the key) and fall back.
+    // Steam or IGDB is down. Log the kind of failure (never the request: Steam's URL carries the key). If a list was
+    // saved earlier, show that, marked as old; otherwise fall back to the games marked Playing by hand.
     console.error(err instanceof SteamError ? `Recently played failed: ${err.kind}` : err);
-    return manual(true);
+    const old = savedForThisAccount ? steamResult(userId, savedRecent(userId)) : null;
+    return old && savedForThisAccount
+      ? { ...old, steam_failed: true, stale_since: savedForThisAccount.fetched_at }
+      : manual(true);
   }
 
-  remember(recentCache, userId, { at: Date.now(), steamId, games });
+  saveRecent(userId, steamId, games);
   return steamResult(userId, games) ?? manual();
 }
 
+function savedRecent(userId: number): PlayingGame[] {
+  return db
+    .prepare<[number], { igdb_id: number; name: string; cover_url: string | null; minutes: number }>(
+      "SELECT igdb_id, name, cover_url, minutes FROM steam_recent_games WHERE user_id = ? ORDER BY position"
+    )
+    .all(userId)
+    .map((g) => ({
+      igdb_id: g.igdb_id,
+      name: g.name,
+      cover_url: g.cover_url,
+      hours_last_two_weeks: Math.round(g.minutes / 6) / 10,
+      minutes_last_two_weeks: g.minutes,
+    }));
+}
+
+function saveRecent(userId: number, steamId: string, games: PlayingGame[]): void {
+  db.transaction(() => {
+    db.prepare("DELETE FROM steam_recent_games WHERE user_id = ?").run(userId);
+    const insert = db.prepare(
+      "INSERT INTO steam_recent_games (user_id, igdb_id, name, cover_url, minutes, position) VALUES (?, ?, ?, ?, ?, ?)"
+    );
+    games.forEach((g, i) => insert.run(userId, g.igdb_id, g.name, g.cover_url, g.minutes_last_two_weeks ?? 0, i));
+    db.prepare(
+      `INSERT INTO steam_recent_state (user_id, steam_id, fetched_at) VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET steam_id = excluded.steam_id, fetched_at = excluded.fetched_at`
+    ).run(userId, steamId, new Date().toISOString());
+  })();
+}
+
 // The Steam list without the games the user hid (applied on every read, so hiding takes effect at once even though the
-// Steam answer is cached). Null when nothing is left, so the widget falls back to the games marked Playing by hand.
+// Steam answer is saved). Null when nothing is left, so the widget falls back to the games marked Playing by hand.
 function steamResult(userId: number, games: PlayingGame[]): CurrentlyPlaying | null {
   const hidden = hiddenEverywhere(userId);
   const shown = games.filter((g) => !hidden.has(g.igdb_id));
@@ -143,7 +170,26 @@ export async function libraryBreakdown(userId: number): Promise<Breakdown | null
     .all(userId)
     .map((r) => r.igdb_id);
 
-  const missing = ids.filter((id) => !genreCache.has(id));
+  const saved = new Map<number, { names: CategoryNames; fetchedAt: number }>();
+  const readSaved = db.prepare<[number], { genres: string; themes: string; modes: string; fetched_at: string }>(
+    "SELECT genres, themes, modes, fetched_at FROM game_metadata WHERE igdb_id = ?"
+  );
+  for (const id of ids) {
+    const row = readSaved.get(id);
+    if (row) {
+      saved.set(id, {
+        names: { genres: JSON.parse(row.genres), themes: JSON.parse(row.themes), modes: JSON.parse(row.modes) },
+        fetchedAt: Date.parse(row.fetched_at),
+      });
+    }
+  }
+
+  // Games with nothing saved, or whose saved answer is old, are asked for. If IGDB cannot answer, an old answer is still
+  // used; only games with nothing saved at all are left out.
+  const missing = ids.filter((id) => {
+    const entry = saved.get(id);
+    return !entry || Date.now() - entry.fetchedAt > METADATA_FRESH_MS;
+  });
   try {
     for (let i = 0; i < missing.length; i += GENRE_QUERY_SIZE) {
       const batch = missing.slice(i, i + GENRE_QUERY_SIZE);
@@ -155,20 +201,34 @@ export async function libraryBreakdown(userId: number): Promise<Breakdown | null
           { genres: namesOf(row[IGDB_FIELDS.genres]), themes: namesOf(row[IGDB_FIELDS.themes]), modes: namesOf(row[IGDB_FIELDS.modes]) },
         ])
       );
-      // A game IGDB did not return is remembered as having nothing, so it is not asked for again on every visit.
-      for (const id of batch) remember(genreCache, id, found.get(id) ?? { genres: [], themes: [], modes: [] });
+      // A game IGDB did not return is saved as having nothing, so it is not asked for again on every visit.
+      const now = new Date().toISOString();
+      const save = db.prepare(
+        `INSERT INTO game_metadata (igdb_id, genres, themes, modes, fetched_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(igdb_id) DO UPDATE SET genres = excluded.genres, themes = excluded.themes, modes = excluded.modes, fetched_at = excluded.fetched_at`
+      );
+      db.transaction(() => {
+        for (const id of batch) {
+          const names = found.get(id) ?? { genres: [], themes: [], modes: [] };
+          save.run(id, JSON.stringify(names.genres), JSON.stringify(names.themes), JSON.stringify(names.modes), now);
+          saved.set(id, { names, fetchedAt: Date.parse(now) });
+        }
+      })();
     }
   } catch (err) {
     console.error(err);
-    return null;
+    // Nothing usable at all: say so instead of drawing an empty chart.
+    if (!ids.some((id) => saved.has(id))) return null;
   }
 
-  const result: Breakdown = { ...emptyBreakdown(), game_count: ids.length };
+  const known = ids.filter((id) => saved.has(id));
+  const result: Breakdown = { ...emptyBreakdown(), game_count: known.length };
+  if (known.length < ids.length) result.not_loaded = ids.length - known.length;
   for (const category of CATEGORIES) {
     const counts = new Map<string, number>();
     let without = 0;
-    for (const id of ids) {
-      const names = genreCache.get(id)?.[category] ?? [];
+    for (const id of known) {
+      const names = saved.get(id)?.names[category] ?? [];
       if (names.length === 0) without += 1;
       for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
     }

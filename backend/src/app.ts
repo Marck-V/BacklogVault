@@ -32,6 +32,7 @@ import { refreshPlaytime } from "./steamRefresh.ts";
 import { SteamError } from "./steam.ts";
 import db from "./db.ts";
 import { currentlyPlaying, libraryBreakdown, emptyBreakdown } from "./dashboardData.ts";
+import { recordPlaytimeSnapshot, playtimeHistory } from "./playtimeHistory.ts";
 import { siteRouter } from "./staticSite.ts";
 
 const app = express();
@@ -312,6 +313,7 @@ app.get("/api/stats/currently-playing", async (req, res) => {
   // Visitors without a session have no games and no Steam link.
   if (!req.user) return res.json({ source: "manual", steam_linked: false, steam_failed: false, games: [] });
   try {
+    recordPlaytimeSnapshot(req.user.id);
     res.json(await currentlyPlaying(req.user.id));
   } catch (err) {
     console.error(err);
@@ -387,12 +389,18 @@ app.post("/api/steam/refresh", igdbLimiter, async (req, res) => {
       console.error(err);
       time_to_beat = { status: "error" };
     }
+    recordPlaytimeSnapshot(req.user.id);
     const result: RefreshResult = { currently_playing, hours, time_to_beat };
     res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to refresh from Steam" });
   }
+});
+
+// The library totals saved once per day (hours, games, games completed), oldest first.
+app.get("/api/stats/history", (req, res) => {
+  res.json(req.user ? playtimeHistory(req.user.id) : []);
 });
 
 app.get("/api/stats/breakdown", igdbLimiter, async (req, res) => {

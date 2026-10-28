@@ -45,9 +45,11 @@ export default function PrivacyPage() {
           advertising cookies.
         </li>
         <li>
-          Your recently played games are kept in the server&apos;s memory for ten minutes to avoid asking Steam again
-          and again. They are not saved to the database. The same goes for the number of achievements you have unlocked in
-          a game you opened.
+          Your recently played games (name, cover and minutes played) are saved so the dashboard still works when Steam
+          or IGDB cannot be reached, and are used for ten minutes before Steam is asked again. We also save one line a day
+          with your library totals (hours, games and games completed) so trends can be shown. All of it is deleted when
+          you disconnect Steam or delete your data. The number of achievements you have unlocked in a game you opened is
+          only kept in the server&apos;s memory and is not saved.
         </li>
       </ul>
 

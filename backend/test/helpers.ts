@@ -7,7 +7,7 @@ import type { ListGameRow, ListRow } from "../src/types.ts";
 export type Client = ReturnType<typeof request.agent>;
 
 export function resetDb(): void {
-  db.exec("DELETE FROM list_games; DELETE FROM lists; DELETE FROM sessions; DELETE FROM users;");
+  db.exec("DELETE FROM list_games; DELETE FROM game_metadata; DELETE FROM lists; DELETE FROM sessions; DELETE FROM users;");
 }
 
 export function newClient(app: Express): Client {
